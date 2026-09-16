@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
 from datetime import datetime
+import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
@@ -76,7 +77,7 @@ with st.sidebar:
     * **🇺🇸 USA:** Normales Kürzel  
       *(z.B. Apple: `AAPL`)*
     * **🇩🇪 Deutschland:** Kürzel + `.DE`  
-      *(z.B. RWE: `RWE.DE`)*
+      *(z.B. RWE: `RWE.DE`, DHL: `DHL.DE`)*
     """)
     st.markdown("---")
     st.caption("Oma-Kurz-Kompass ULTRA v2 - Edition 2026")
@@ -109,6 +110,24 @@ if analyze_btn and ticker_input:
                 price = price / 100.0
                 currency = 'GBP'
             
+            # --- AUTOMATISCHE WECHSELKURS-UMRECHNUNG IN EURO ---
+            price_eur = price
+            if currency != 'EUR' and isinstance(price, (int, float)):
+                try:
+                    fx_ticker = yf.Ticker(f"{currency}EUR=X")
+                    fx_info = fx_ticker.info
+                    fx_rate = fx_info.get('currentPrice', fx_info.get('regularMarketPrice', None))
+                    if not fx_rate:
+                        # Fallback über historischen Tageskurs
+                        fx_hist = fx_ticker.history(period="1d")
+                        if not fx_hist.empty:
+                            fx_rate = fx_hist['Close'].iloc[-1]
+                    
+                    if fx_rate:
+                        price_eur = price * fx_rate
+                except Exception:
+                    pass # Falls der Wechselkurs-Abruf fehlschlägt, bleibt price_eur beim Originalwert
+            
             pe_ratio = info.get('trailingPE', 'N/A')
             debt_to_equity = info.get('debtToEquity', 'N/A')
             payout_ratio = info.get('payoutRatio', 0.0)
@@ -118,9 +137,13 @@ if analyze_btn and ticker_input:
             
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
             
-            # --- METRIK-KARTEN OBEN ---
+            # --- METRIK-KARTEN OBEN (MIT EURO-ANZEIGE BEI FREMDWÄHRUNGEN) ---
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Kurs", f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "N/A")
+            if currency == 'EUR':
+                m1.metric("Kurs", f"{price:.2f} EUR")
+            else:
+                m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
+                
             m2.metric("KGV (PE Ratio)", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else pe_ratio)
             m3.metric("Schulden (Debt/Equity)", f"{debt_to_equity}%" if debt_to_equity != 'N/A' else 'N/A')
             m4.metric("Ausschüttungsquote", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) else "N/A")
@@ -139,7 +162,7 @@ if analyze_btn and ticker_input:
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass' - ein neutraler, analytischer Finanzkompass nach Beate Sander (Substanz) und Ray Kurzweil (exponentielles Wachstum).
             Analysiere {name} ({ticker_input}) rein objektiv anhand der Kennzahlen:
-            - Währung / Börsenplatz: {currency}
+            - Währung / Börsenplatz: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
@@ -161,7 +184,19 @@ if analyze_btn and ticker_input:
             ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot ohne Handlungsbefehl]
             """
             
-            response = model.generate_content(prompt)
+            # --- ROBUSTE KI-ABFRAGE MIT AUTOMATISCHEM RETRY BEI RATE LIMIT ---
+            response = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = model.generate_content(prompt)
+                    break
+                except Exception as api_err:
+                    if "429" in str(api_err) and attempt < max_retries - 1:
+                        time.sleep(10)
+                    else:
+                        raise api_err
+            
             raw_text = response.text
             
             # --- TEXT PARSEN UND FARBLICH IN KARTEN / CONTAINER EINBETTEN ---
@@ -205,7 +240,7 @@ if analyze_btn and ticker_input:
             # --- DOWNLOAD-BUTTON FÜR DAS LOGBUCH ---
             st.markdown("---")
             report_filename = f"Kompass_Analyse_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            full_report_content = f"OMA-KURZ-KOMPASS LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nKurs: {price} {currency}\nKGV: {pe_ratio}\n\n{raw_text}"
+            full_report_content = f"OMA-KURZ-KOMPASS LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\nKGV: {pe_ratio}\n\n{raw_text}"
             
             st.download_button(
                 label="📥 Analyse-Logbuch als Text-Datei herunterladen",
@@ -216,4 +251,7 @@ if analyze_btn and ticker_input:
             )
             
         except Exception as e:
-            st.error(f"Fehler bei der Navigation/Analyse: {str(e)}")
+            if "429" in str(e):
+                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde kurzzeitig erreicht. Bitte warte einen Moment (ca. 15–30 Sekunden) und starte die Analyse dann erneut.")
+            else:
+                st.error(f"Fehler bei der Navigation/Analyse: {str(e)}")
