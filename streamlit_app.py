@@ -7,7 +7,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v2",
+    page_title="Oma-Kurz-Kompass ULTRA v3",
     page_icon="🧭",
     layout="wide"
 )
@@ -36,6 +36,15 @@ st.markdown("""
         font-style: italic;
         font-size: 1.1em;
     }
+    .score-card {
+        background: #1f1408;
+        border: 1px solid #d4af37;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        color: #f4e8c1;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,51 +61,46 @@ model = genai.GenerativeModel(
     model_name="gemini-3.6-flash",
     generation_config={
         "temperature": 0.3,
-        "max_output_tokens": 3000,
+        "max_output_tokens": 3200,
     }
 )
 
-# --- SEITENLEISTE: GLOSSAR & TICKER-HILFE ---
+# --- SEITENLEISTE: GLOSSAR & PHILOSOPHIE ---
 with st.sidebar:
-    st.title("🧭 Der Navigations-Ratgeber")
+    st.title("🧭 Das Titanen-Quartett")
     st.markdown("""
-    * **⚠️ Dividenden-Falle:** Hohe Ausschüttungen durch Schulden erkauft.
-    * **🪨 Unpolierter Rohstein:** Viel Potenzial, aber hohe Risiken.
-    * **🌱 Sich entwickelnder Stein:** Wachsende Substanz, starker Accelerator.
-    * **🛡️ Solider Wert:** Stabiler Fels in der Brandung, krisenfester Cashflow.
-    * **💎 Geschliffener Brillant:** Unknackbarer Burggraben & exponentielles Wachstum.
+    * **🛡️ Beate Sander:** Substanz, Bilanzen, Dividenden.
+    * **🚀 Ray Kurzweil:** Exponentielles Wachstum & Technologie.
+    * **🏰 Charlie Munger:** Wirtschaftlicher Burggraben & Qualität.
+    * **🌊 Howard Marks:** Marktzyklen & Risikobewusstsein.
+    * **🪐 Max Tegmark:** Systemische Resilienz & Zukunft.
     """)
-    
     st.markdown("---")
     st.title("💡 Ticker-Wegweiser")
     st.markdown("""
-    * **🇯🇵 Japan (Tokyo):** Zahlen + `.T`  
-      *(z.B. Fujifilm: `4901.T`, Sony: `6758.T`)*
-    * **🇬🇧 UK (London):** Kürzel + `.L`  
-      *(z.B. Rentokil: `RTO.L`, Shell: `SHEL.L`)*
-    * **🇺🇸 USA:** Normales Kürzel  
-      *(z.B. Alnylam: `ALNY`, Apple: `AAPL`)*
-    * **🇩🇪 Deutschland:** Kürzel + `.DE`  
-      *(z.B. Allianz: `ALV.DE`, RWE: `RWE.DE`)*
+    * **🇯🇵 Japan (Tokyo):** `.T` *(z.B. Fujifilm: `4901.T`)*
+    * **🇬🇧 UK (London):** `.L` *(z.B. Rentokil: `RTO.L`)*
+    * **🇺🇸 USA:** Normal *(z.B. Alnylam: `ALNY`)*
+    * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v2 - Edition 2026")
+    st.caption("Oma-Kurz-Kompass ULTRA v3")
 
-# --- HEADER IM HISTORISCHEN ENDPUNKT-LOOK ---
+# --- HEADER ---
 st.markdown("""
 <div class="main-header">
     <h1>🧭 OMA-KURZ-KOMPASS ULTRA</h1>
-    <p>„Die Entdeckung des weltweiten Wertes – Substanz nach Beate Sander & exponentielles Wachstum nach Ray Kurzweil“</p>
+    <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & systemische Resilienz“</p>
 </div>
 """, unsafe_allow_html=True)
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T, AAPL):", "ALNY").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "ALNY").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
 if analyze_btn and ticker_input:
-    with st.spinner(f"Navigiere durch die Weltmärkte, durchleuchte Sparten und analysiere Bilanzen von {ticker_input}..."):
+    with st.spinner(f"Berechne Compass Integrity Score & durchleuchte {ticker_input} durch die Brille der Titanen..."):
         try:
             stock = yf.Ticker(ticker_input)
             info = stock.info
@@ -126,27 +130,66 @@ if analyze_btn and ticker_input:
                 except Exception:
                     pass
             
-            pe_ratio = info.get('trailingPE', 'N/A')
-            debt_to_equity = info.get('debtToEquity', 'N/A')
+            pe_ratio = info.get('trailingPE', None)
+            debt_to_equity = info.get('debtToEquity', None)
             payout_ratio = info.get('payoutRatio', 0.0)
             market_cap = info.get('marketCap', 'N/A')
             fifty_two_high = info.get('fiftyTwoWeekHigh', 'N/A')
             fifty_two_low = info.get('fiftyTwoWeekLow', 'N/A')
             
+            # --- LOKALE BERECHNUNG DES "COMPASS INTEGRITY SCORE" ---
+            # Ein robuster, objektiver Algorithmus (0-100 Punkte) basierend auf KGV, Schulden & Datenqualität
+            base_score = 50
+            score_reasons = []
+            
+            # KGV-Bewertung (Sander/Munger Logik)
+            if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
+                if pe_ratio < 15:
+                    base_score += 20
+                    score_reasons.append("Attraktives KGV (<15)")
+                elif pe_ratio < 30:
+                    base_score += 10
+                    score_reasons.append("Moderat bewertet")
+                else:
+                    base_score -= 10
+                    score_reasons.append("Hohe Bewertung / Wachstumsaufschlag")
+            
+            # Schulden-Bewertung (Debt/Equity in %)
+            if isinstance(debt_to_equity, (int, float)):
+                if debt_to_equity < 50:
+                    base_score += 20
+                    score_reasons.append("Sehr gesunde Bilanz (geringe Schulden)")
+                elif debt_to_equity < 150:
+                    base_score += 5
+                    score_reasons.append("Solide Verschuldung")
+                else:
+                    base_score -= 20
+                    score_reasons.append("Erhöhte Schuldenlast")
+            
+            # Ausschüttungs-Bonus (Sander Dividenden-Disziplin)
+            if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
+                base_score += 10
+                score_reasons.append("Gesunde Dividendenquote")
+                
+            integrity_score = max(10, min(100, base_score))
+            
+            # --- OBERFLÄCHE: LOGBUCH & METRIKEN ---
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
             
-            # --- METRIK-KARTEN OBEN ---
-            m1, m2, m3, m4 = st.columns(4)
+            col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
             if currency == 'EUR':
-                m1.metric("Kurs", f"{price:.2f} EUR")
+                col_m1.metric("Kurs", f"{price:.2f} EUR")
             else:
-                m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
+                col_m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
                 
-            m2.metric("KGV (PE Ratio)", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else pe_ratio)
-            m3.metric("Schulden (Debt/Equity)", f"{debt_to_equity}%" if debt_to_equity != 'N/A' else 'N/A')
-            m4.metric("Ausschüttungsquote", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) else "N/A")
+            col_m2.metric("KGV", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A")
+            col_m3.metric("Schulden (D/E)", f"{debt_to_equity}%" if isinstance(debt_to_equity, (int, float)) else "N/A")
+            col_m4.metric("Ausschüttung", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) and payout_ratio else "N/A")
+            col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
             
-            # --- ERWEITERTE DATEN-TABELLE ---
+            # Visuelle Integrity-Leiste
+            st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte (Objektiver Fundamental- & Stabilitätsindex)")
+
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
@@ -156,36 +199,38 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- ERWEITERTER PROMPT MIT SPARTEN & TRANSFORMATION ---
+            # --- ERWEITERTER KI-PROMPT MIT ALLEN FÜNF DENKERN ---
             prompt = f"""
-            Du bist der 'Oma-Kurz-Kompass' - ein neutraler, analytischer Finanzkompass nach Beate Sander (Substanz, Bilanzen, Diversifikation) und Ray Kurzweil (exponentielles Wachstum, technologische Disruption, Transformation).
-            Analysiere {name} ({ticker_input}) tiefgehend anhand der Kennzahlen:
+            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander (Substanz & Bilanzen), Ray Kurzweil (exponentielle Technologie), Charlie Munger (wirtschaftlicher Burggraben & Qualität), Howard Marks (Marktzyklen & Risikobewusstsein) und Max Tegmark (systemische Resilienz & Existenzsicherheit) vereint.
+            
+            Analysiere {name} ({ticker_input}) tiefgehend:
             - Währung / Börsenplatz: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
+            - Berechneter Compass Integrity Score: {integrity_score}/100
             
-            WICHTIG: Gib KEINE direkten Anlageempfehlungen wie "Kaufen" oder "Finger weg!". Keine Anlageberatung! Formuliere stattdessen objektiv.
+            WICHTIG: KEINE direkten Anlageempfehlungen oder Handlungsbefehle ("Kaufen/Verkaufen"). Keine Anlageberatung!
             
-            Beantworte und bewerte das Unternehmen in genau dieser Struktur (verwende exakt diese Überschriften mit Doppelkreuz):
+            Beantworte das Unternehmen in genau dieser Struktur (verwende exakt diese Überschriften mit Doppelkreuz):
             
             ## 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)
-            [Beschreibe präzise die aktuellen Geschäftssäulen, Segmente oder medizinischen/technologischen Plattformen des Unternehmens.]
+            [Beschreibe präzise die aktuellen Geschäftssäulen und Segmente.]
             
-            ## 2. Der Transformations-Faktor (Wandel & Evolution)
-            [Wie wandelt sich das Unternehmen strukturell? (z.B. alte vs. neue Geschäftsfelder, Diversifikation, Technologiewandel wie Fujifilm von Film zu Medizintechnik oder Alnylam von seltener Genetik zu breiterer RNAi-Pipeline).]
+            ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
+            [Wie wandelt sich das Unternehmen technologisch? Wie hoch ist die systemische Zukunftsfähigkeit und Resilienz in einer sich rasant verändernden Welt?]
             
-            ## 3. Schulden & Stabilität (Sander-Blick)
-            [Analysiere Bilanz, Verschuldung und finanzielle Widerstandskraft.]
+            ## 3. Burggraben & Qualität (Munger-Blick)
+            [Wie stark ist das Geschäftsmodell gegen Wettbewerber geschützt? Ist die operative Qualität unknackbar?]
             
-            ## 4. Dividenden-Sicherheit vs. Falle
-            [Bewerte die Ausschüttung im Verhältnis zum Cashflow und Geschäftsmodell.]
+            ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
+            [Analysiere Bilanzstabilität, Verschuldung und wo sich das Unternehmen im makroökonomischen Bewertungs- und Marktzyklus befindet.]
             
-            ## 5. 36-Monats-Horizont (Sander-Kurzweil-Prognose)
-            [Wie könnte sich dieses Unternehmen in den nächsten 3 Jahren in einem diversifizierten Depot im Spannungsfeld aus solider Substanz und technologischer Skalierung entwickeln?]
+            ## 5. 36-Monats-Horizont & Gesamtprognose
+            [Wie schlägt sich das Unternehmen über die nächsten 3 Jahre im Spannungsfeld aus Substanz, Risiko, Zyklen und exponentiellem Wandel?]
             
             ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
-            ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot ohne Handlungsbefehl]
+            ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot]
             """
             
             # --- ROBUSTE KI-ABFRAGE MIT RETRY ---
@@ -205,7 +250,7 @@ if analyze_btn and ticker_input:
             
             # --- STEIN-KLASSEN BADGES ---
             if "Geschliffener Brillant" in raw_text:
-                st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbares Geschäftsmodell & Exponentielles Wachstum")
+                st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbarer Burggraben & Exponentielles Wachstum")
             elif "Solider Wert" in raw_text:
                 st.info("🛡️ **Stein-Klasse: Solider Wert** – Fels in der Brandung mit gesunder Substanz")
             elif "Sich entwickelnder Stein" in raw_text:
@@ -226,20 +271,20 @@ if analyze_btn and ticker_input:
                         st.markdown(part.replace("1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)", "").strip())
                 elif part.startswith("2. Der Transformations"):
                     with st.container(border=True):
-                        st.markdown("### 🔄 2. Der Transformations-Faktor (Wandel & Evolution)")
-                        st.markdown(part.replace("2. Der Transformations-Faktor (Wandel & Evolution)", "").strip())
-                elif part.startswith("3. Schulden"):
+                        st.markdown("### 🚀 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)")
+                        st.markdown(part.replace("2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)", "").strip())
+                elif part.startswith("3. Burggraben"):
                     with st.container(border=True):
-                        st.markdown("### 🏛️ 3. Schulden & Stabilität (Sander-Blick)")
-                        st.markdown(part.replace("3. Schulden & Stabilität (Sander-Blick)", "").strip())
-                elif part.startswith("4. Dividenden"):
+                        st.markdown("### 🏰 3. Burggraben & Qualität (Munger-Blick)")
+                        st.markdown(part.replace("3. Burggraben & Qualität (Munger-Blick)", "").strip())
+                elif part.startswith("4. Bilanzen"):
                     with st.container(border=True):
-                        st.markdown("### 💰 4. Dividenden-Sicherheit vs. Falle")
-                        st.markdown(part.replace("4. Dividenden-Sicherheit vs. Falle", "").strip())
+                        st.markdown("### 🏛️ 4. Bilanzen, Schulden & Zyklen (Sander & Marks)")
+                        st.markdown(part.replace("4. Bilanzen, Schulden & Zyklen (Sander & Marks)", "").strip())
                 elif part.startswith("5. 36-Monats"):
                     with st.container(border=True):
-                        st.markdown("### ⏳ 5. 36-Monats-Horizont (Sander-Kurzweil-Prognose)")
-                        st.markdown(part.replace("5. 36-Monats-Horizont (Sander-Kurzweil-Prognose)", "").strip())
+                        st.markdown("### ⏳ 5. 36-Monats-Horizont & Gesamtprognose")
+                        st.markdown(part.replace("5. 36-Monats-Horizont & Gesamtprognose", "").strip())
             
             # Fazit separat ausgeben
             if "FAZIT:" in raw_text:
@@ -249,11 +294,11 @@ if analyze_btn and ticker_input:
                 
             # --- DOWNLOAD-BUTTON ---
             st.markdown("---")
-            report_filename = f"Kompass_Analyse_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            full_report_content = f"OMA-KURZ-KOMPASS LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\nKGV: {pe_ratio}\n\n{raw_text}"
+            report_filename = f"Compass_Score_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
+            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v3 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
             
             st.download_button(
-                label="📥 Analyse-Logbuch als Text-Datei herunterladen",
+                label="📥 Analyse-Logbuch mit Compass Integrity Score herunterladen",
                 data=full_report_content,
                 file_name=report_filename,
                 mime="text/plain",
