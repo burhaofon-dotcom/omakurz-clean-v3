@@ -92,7 +92,7 @@ with col_search:
 
 # --- CACHED KI-ABFRAGE MIT INTELLIGENTEM RETRY-PUFFER ---
 @st.cache_data(ttl=3600, show_spinner=False)
-mathrm_cached_generation(prompt_text):
+def cached_generation(prompt_text):
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -100,7 +100,7 @@ mathrm_cached_generation(prompt_text):
             return response.text
         except Exception as api_err:
             if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(12 + (attempt * 10)) # Intelligentes exponentielles Warten (12s, 22s...)
+                time.sleep(12 + (attempt * 10))
             else:
                 raise api_err
 
@@ -154,7 +154,7 @@ if analyze_btn and ticker_input:
                 else:
                     base_score -= 5
             
-            # 2. Schulden-Check mit Kontext (Wachstums- vs. Pleiterisiko)
+            # 2. Schulden-Check mit Kontext
             if isinstance(debt_to_equity, (int, float)):
                 if debt_to_equity < 50:
                     base_score += 15
@@ -304,6 +304,6 @@ if analyze_btn and ticker_input:
             
         except Exception as e:
             if "429" in str(e):
-                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde vorübergehend erreicht. Der automatische Puffer hat es versucht, aber Google bittet um eine kleine Verschnaufpause. Bitte warte 30 Sekunden und klicke erneut.")
+                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde vorübergehend erreicht. Bitte warte einen kurzen Moment und starte die Analyse erneut.")
             else:
                 st.error(f"Fehler bei der Navigation/Analyse: {str(e)}")
