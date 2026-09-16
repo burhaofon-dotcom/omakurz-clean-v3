@@ -18,21 +18,14 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden! Bitte hinterlege GEMINI_API_KEY in den Secrets.")
     st.stop()
 
-# --- MODELL AUSWAHL ---
-generation_config = {
-    "temperature": 0.3,
-    "top_p": 0.95,
-    "top_k": 40,
-    "max_output_tokens": 2048,
-}
-
+# --- MODELL INITIALISIERUNG ---
 model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-1.5-flash",
     generation_config={
         "temperature": 0.3,
         "max_output_tokens": 2048,
     }
-
+)
 
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
 st.caption("KI-gestützte Bilanz- & Wachstumsanalyse nach Beate Sander & Ray Kurzweil")
