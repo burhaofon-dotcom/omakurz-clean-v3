@@ -87,12 +87,14 @@ if analyze_btn and ticker_input:
             st.markdown("---")
             
             # --- PROMPT FÜR DIE KI ---
-            prompt = f"""
-            Du bist der 'Oma-Kurz-Kompass' - ein gnadenloser Finanzanalyst nach Beate Sander (Substanz) und Ray Kurzweil (exponentielles Wachstum).
-            Analysiere {name} ({ticker_input}):
+           prompt = f"""
+            Du bist der 'Oma-Kurz-Kompass' - ein neutraler, analytischer Finanzkompass nach Beate Sander (Substanz) und Ray Kurzweil (exponentielles Wachstum).
+            Analysiere {name} ({ticker_input}) rein objektiv anhand der Kennzahlen:
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
+            
+            WICHTIG: Gib KEINE direkten Anlageempfehlungen wie "Kaufen" oder "Finger weg!". Keine Anlageberatung! Formuliere stattdessen objektiv, wie sich das Unternehmen im Depot verhalten könnte (z.B. bei breiter Streuung, kleinen Tranchen oder für bestimmte Anlegertypen).
             
             Bewerte die Aktie prägnant in genau dieser Struktur:
             
@@ -106,12 +108,8 @@ if analyze_btn and ticker_input:
             [Deine Analyse]
             
             ### STEIN-KLASSE: [Wähle genau eines aus: Geschliffener Brillant | Solider Wert | Sich entwickelnder Stein | Unpolierter Rohstein | Dividenden-Falle]
-            ### FAZIT: [Kurzes, knackiges Fazit]
+            ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot ohne Handlungsbefehl]
             """
-            
-            response = model.generate_content(prompt)
-            raw_text = response.text
-            
             # --- STEIN-KLASSEN BADGES ---
             if "Geschliffener Brillant" in raw_text:
                 st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbares Geschäftsmodell & Exponentielles Wachstum")
