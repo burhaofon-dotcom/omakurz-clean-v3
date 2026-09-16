@@ -7,7 +7,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v3",
+    page_title="Oma-Kurz-Kompass ULTRA v4",
     page_icon="🧭",
     layout="wide"
 )
@@ -36,15 +36,6 @@ st.markdown("""
         font-style: italic;
         font-size: 1.1em;
     }
-    .score-card {
-        background: #1f1408;
-        border: 1px solid #d4af37;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-        color: #f4e8c1;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,13 +58,13 @@ model = genai.GenerativeModel(
 
 # --- SEITENLEISTE: GLOSSAR & PHILOSOPHIE ---
 with st.sidebar:
-    st.title("🧭 Das Titanen-Quartett")
+    st.title("🧭 Das Titanen-Quartett + 1")
     st.markdown("""
     * **🛡️ Beate Sander:** Substanz, Bilanzen, Dividenden.
     * **🚀 Ray Kurzweil:** Exponentielles Wachstum & Technologie.
     * **🏰 Charlie Munger:** Wirtschaftlicher Burggraben & Qualität.
     * **🌊 Howard Marks:** Marktzyklen & Risikobewusstsein.
-    * **🪐 Max Tegmark:** Systemische Resilienz & Zukunft.
+    * **🪐 Max Tegmark:** Systemische Resilienz & Validierung.
     """)
     st.markdown("---")
     st.title("💡 Ticker-Wegweiser")
@@ -84,13 +75,13 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v3")
+    st.caption("Oma-Kurz-Kompass ULTRA v4")
 
 # --- HEADER ---
 st.markdown("""
 <div class="main-header">
     <h1>🧭 OMA-KURZ-KOMPASS ULTRA</h1>
-    <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & systemische Resilienz“</p>
+    <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Theranos-Nikola-Detektor“</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -100,7 +91,7 @@ with col_search:
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
 if analyze_btn and ticker_input:
-    with st.spinner(f"Berechne Compass Integrity Score & durchleuchte {ticker_input} durch die Brille der Titanen..."):
+    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input} durch die Brille der Titanen..."):
         try:
             stock = yf.Ticker(ticker_input)
             info = stock.info
@@ -133,45 +124,47 @@ if analyze_btn and ticker_input:
             pe_ratio = info.get('trailingPE', None)
             debt_to_equity = info.get('debtToEquity', None)
             payout_ratio = info.get('payoutRatio', 0.0)
-            market_cap = info.get('marketCap', 'N/A')
+            market_cap = info.get('marketCap', 0)
             fifty_two_high = info.get('fiftyTwoWeekHigh', 'N/A')
             fifty_two_low = info.get('fiftyTwoWeekLow', 'N/A')
             
-            # --- LOKALE BERECHNUNG DES "COMPASS INTEGRITY SCORE" ---
-            # Ein robuster, objektiver Algorithmus (0-100 Punkte) basierend auf KGV, Schulden & Datenqualität
+            # --- INTELLIGENTER "COMPASS INTEGRITY SCORE" MIT THERANOS-NIKOLA-DETEKTOR ---
             base_score = 50
-            score_reasons = []
             
-            # KGV-Bewertung (Sander/Munger Logik)
+            # 1. Bilanz & Bewertung (Sander/Munger)
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
                 if pe_ratio < 15:
-                    base_score += 20
-                    score_reasons.append("Attraktives KGV (<15)")
+                    base_score += 15
                 elif pe_ratio < 30:
-                    base_score += 10
-                    score_reasons.append("Moderat bewertet")
+                    base_score += 5
                 else:
-                    base_score -= 10
-                    score_reasons.append("Hohe Bewertung / Wachstumsaufschlag")
+                    base_score -= 5 # Milder Malus für Wachstum
             
-            # Schulden-Bewertung (Debt/Equity in %)
+            # 2. Schulden-Check mit Kontext (Wachstums- vs. Pleiterisiko)
             if isinstance(debt_to_equity, (int, float)):
                 if debt_to_equity < 50:
-                    base_score += 20
-                    score_reasons.append("Sehr gesunde Bilanz (geringe Schulden)")
+                    base_score += 15
                 elif debt_to_equity < 150:
-                    base_score += 5
-                    score_reasons.append("Solide Verschuldung")
+                    base_score += 0
                 else:
-                    base_score -= 20
-                    score_reasons.append("Erhöhte Schuldenlast")
+                    # Theranos-Nikola-Detektor: Hohe Schulden/Verluste sind ok, WENN Marktvalidierung da ist (hohe Marktkapitalisierung)
+                    if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000: # > 5 Mrd. Marktkapitalisierung
+                        base_score -= 5  # Kompensation durch institutionelle Marktreife
+                    else:
+                        base_score -= 25 # Harter Malus für hochverschuldete Small Caps ohne Beweise
             
-            # Ausschüttungs-Bonus (Sander Dividenden-Disziplin)
+            # 3. Marktkapitalisierung & Validierungs-Bonus (Schutz vor Luftschlössern)
+            if isinstance(market_cap, (int, float)):
+                if market_cap > 10_000_000_000: # Über 10 Mrd. USD/EUR Marktwert = etablierter Marktteilnehmer
+                    base_score += 20
+                elif market_cap > 2_000_000_000:
+                    base_score += 10
+            
+            # 4. Dividenden-Bonus
             if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
                 base_score += 10
-                score_reasons.append("Gesunde Dividendenquote")
                 
-            integrity_score = max(10, min(100, base_score))
+            integrity_score = max(15, min(100, base_score))
             
             # --- OBERFLÄCHE: LOGBUCH & METRIKEN ---
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
@@ -188,7 +181,7 @@ if analyze_btn and ticker_input:
             col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
             
             # Visuelle Integrity-Leiste
-            st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte (Objektiver Fundamental- & Stabilitätsindex)")
+            st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte (Inkl. Theranos-Nikola-Detektor & Validierungs-Prüfung)")
 
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
                 col_t1, col_t2 = st.columns(2)
@@ -199,15 +192,18 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- ERWEITERTER KI-PROMPT MIT ALLEN FÜNF DENKERN ---
+            # --- ERWEITERTER KI-PROMPT MIT DETEKTOR-LOGIK ---
             prompt = f"""
-            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander (Substanz & Bilanzen), Ray Kurzweil (exponentielle Technologie), Charlie Munger (wirtschaftlicher Burggraben & Qualität), Howard Marks (Marktzyklen & Risikobewusstsein) und Max Tegmark (systemische Resilienz & Existenzsicherheit) vereint.
+            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander (Substanz), Ray Kurzweil (Technologie), Charlie Munger (Burggraben & Skepsis), Howard Marks (Zyklen) und Max Tegmark (systemische Resilienz & Validierung) vereint.
+            
+            WICHTIGER SCHWERPUNKT (Theranos-Nikola-Detektor): 
+            Prüfe kritisch, ob es sich um echte, unabhängig verifizierte wissenschaftliche / kommerzielle Meilensteine (z.B. zugelassene Produkte, klinische Phase-3-Erfolge, echte Pharma-Partner und Umsätze) handelt oder ob das Unternehmen zu stark von reinen Marketing-Versprechungen ohne Substanz lebt. Blender müssen entlarvt werden; echte Pioniere mit temporär hohen Investitionen müssen fair bewertet werden.
             
             Analysiere {name} ({ticker_input}) tiefgehend:
             - Währung / Börsenplatz: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
-            - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
+            - Marktkapitalisierung: {market_cap}
             - Berechneter Compass Integrity Score: {integrity_score}/100
             
             WICHTIG: KEINE direkten Anlageempfehlungen oder Handlungsbefehle ("Kaufen/Verkaufen"). Keine Anlageberatung!
@@ -218,16 +214,16 @@ if analyze_btn and ticker_input:
             [Beschreibe präzise die aktuellen Geschäftssäulen und Segmente.]
             
             ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
-            [Wie wandelt sich das Unternehmen technologisch? Wie hoch ist die systemische Zukunftsfähigkeit und Resilienz in einer sich rasant verändernden Welt?]
+            [Wie wandelt sich das Unternehmen technologisch? Wie hoch ist die systemische Zukunftsfähigkeit und Skalierbarkeit?]
             
-            ## 3. Burggraben & Qualität (Munger-Blick)
-            [Wie stark ist das Geschäftsmodell gegen Wettbewerber geschützt? Ist die operative Qualität unknackbar?]
+            ## 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)
+            [Gibt es unabhängige wissenschaftliche/regulatorische Validierungen (z.B. klinische Phasen, FDA, globale Partner) oder handelt es sich um ungeprüfte Versprechungen? Wie stark ist der echte Burggraben?]
             
             ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
-            [Analysiere Bilanzstabilität, Verschuldung und wo sich das Unternehmen im makroökonomischen Bewertungs- und Marktzyklus befindet.]
+            [Analysiere Bilanzstabilität, Verschuldung und wo sich das Unternehmen im makroökonomischen Zyklus befindet.]
             
             ## 5. 36-Monats-Horizont & Gesamtprognose
-            [Wie schlägt sich das Unternehmen über die nächsten 3 Jahre im Spannungsfeld aus Substanz, Risiko, Zyklen und exponentiellem Wandel?]
+            [Wie schlägt sich das Unternehmen über die nächsten 3 Jahre im Spannungsfeld aus Substanz, Validierung und exponentiellem Wandel?]
             
             ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
             ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot]
@@ -275,8 +271,8 @@ if analyze_btn and ticker_input:
                         st.markdown(part.replace("2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)", "").strip())
                 elif part.startswith("3. Burggraben"):
                     with st.container(border=True):
-                        st.markdown("### 🏰 3. Burggraben & Qualität (Munger-Blick)")
-                        st.markdown(part.replace("3. Burggraben & Qualität (Munger-Blick)", "").strip())
+                        st.markdown("### 🏰 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)")
+                        st.markdown(part.replace("3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)", "").strip())
                 elif part.startswith("4. Bilanzen"):
                     with st.container(border=True):
                         st.markdown("### 🏛️ 4. Bilanzen, Schulden & Zyklen (Sander & Marks)")
@@ -295,7 +291,7 @@ if analyze_btn and ticker_input:
             # --- DOWNLOAD-BUTTON ---
             st.markdown("---")
             report_filename = f"Compass_Score_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v3 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
+            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v4 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
             
             st.download_button(
                 label="📥 Analyse-Logbuch mit Compass Integrity Score herunterladen",
