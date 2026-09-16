@@ -27,9 +27,12 @@ generation_config = {
 }
 
 model = genai.GenerativeModel(
-  model_name="models/gemini-1.5-flash",
-    generation_config=generation_config,
-)
+    model_name="gemini-2.5-flash",
+    generation_config={
+        "temperature": 0.3,
+        "max_output_tokens": 2048,
+    }
+
 
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
 st.caption("KI-gestützte Bilanz- & Wachstumsanalyse nach Beate Sander & Ray Kurzweil")
