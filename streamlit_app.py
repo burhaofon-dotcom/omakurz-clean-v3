@@ -26,13 +26,44 @@ model = genai.GenerativeModel(
         "max_output_tokens": 2048,
     }
 )
+
+# --- SEITENLEISTE: GLOSSAR & PHILOSOPHIE ---
+with st.sidebar:
+    st.title("📚 Der Edelstein-Glossar")
+    st.markdown("""
+    Hier siehst du die Klassifizierung unserer Anlage-Steine nach Beate Sander & Ray Kurzweil:
+    
+    * **🪨 Unpolierter Rohstein:**  
+      Unternehmen mit viel Potenzial, aber noch Ecken, Kanten oder hohem Risiko. Muss erst geschliffen werden.
+      
+    * **🌱 Sich entwickelnder Stein:**  
+      Wachsende Substanz, die Innovationen skaliert und auf dem Weg zu wahrer Größe ist (Zukunfts-Accelerator).
+      
+    * **🛡️ Solider Wert:**  
+      Stabiler Fels in der Brandung. Solide Bilanzen, krisenfester Cashflow, ideal für langfristigen Aufbau.
+      
+    * **💎 Geschliffener Brillant:**  
+      Die absolute Königsklasse. Unknackbares Geschäftsmodell, starker Burggraben und exponentielles Wachstum.
+      
+    * **⚠️ Dividenden-Falle:**  
+      Vorsicht! Hohe Ausschüttungen, die aber durch Schulden erkauft sind und Innovationen abwürgen.
+    """)
+    st.markdown("---")
+    st.caption("Oma-Kurz-Kompass ULTRA v2")
+
+# --- HEADER & SUCHE ---
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
-st.caption("KI-gestützte Bilanz- & Wachstumsanalyse nach Beate Sander & Ray Kurzweil")
+st.caption("KI-gestützte Bilanz- & Wachstumsanalyse mit Stein-Hierarchie & Glossar")
 
-ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, MSFT, TSLA, ENB):", "AAPL").upper()
+st.markdown("---")
 
-if st.button("🚀 Analyse starten", use_container_width=True):
-    with st.spinner(f"Analysiere {ticker_input}..."):
+col_search, col_space = st.columns([2, 1])
+with col_search:
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, MSFT, TSLA, ENB):", "AAPL").upper()
+    analyze_btn = st.button("🚀 Analyse starten", use_container_width=True, type="primary")
+
+if analyze_btn and ticker_input:
+    with st.spinner(f"Lade Finanzdaten und starte KI-Stresstest für {ticker_input}..."):
         try:
             stock = yf.Ticker(ticker_input)
             info = stock.info
@@ -44,6 +75,18 @@ if st.button("🚀 Analyse starten", use_container_width=True):
             debt_to_equity = info.get('debtToEquity', 'N/A')
             payout_ratio = info.get('payoutRatio', 0.0)
             
+            st.markdown(f"## 📊 Analyse für **{name}** (`{ticker_input}`)")
+            
+            # --- METRIK-KARTEN OBEN ---
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Kurs", f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "N/A")
+            m2.metric("KGV (PE Ratio)", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else pe_ratio)
+            m3.metric("Schulden (Debt/Equity)", f"{debt_to_equity}%" if debt_to_equity != 'N/A' else 'N/A')
+            m4.metric("Ausschüttungsquote", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) else "N/A")
+            
+            st.markdown("---")
+            
+            # --- PROMPT FÜR DIE KI ---
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass' - ein gnadenloser Finanzanalyst nach Beate Sander (Substanz) und Ray Kurzweil (exponentielles Wachstum).
             Analysiere {name} ({ticker_input}):
@@ -51,18 +94,38 @@ if st.button("🚀 Analyse starten", use_container_width=True):
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
             
-            Bewerte die Aktie kurz und prägnant in 3 Abschnitten:
-            1. Schulden & Stabilität
-            2. Dividenden-Sicherheit vs. Falle
-            3. Zukunftspotenzial / Skalierung
+            Bewerte die Aktie prägnant in genau dieser Struktur:
             
-            Fazit mit 'Härtegrad': [Rohstein / Dividenden-Falle / Solider Wert / Brillant]
+            ### 1. Schulden & Stabilität
+            [Deine Analyse]
+            
+            ### 2. Dividenden-Sicherheit vs. Falle
+            [Deine Analyse]
+            
+            ### 3. Zukunftspotenzial / Skalierung (Der Accelerator)
+            [Deine Analyse]
+            
+            ### STEIN-KLASSE: [Wähle genau eines aus: Geschliffener Brillant | Solider Wert | Sich entwickelnder Stein | Unpolierter Rohstein | Dividenden-Falle]
+            ### FAZIT: [Kurzes, knackiges Fazit]
             """
             
             response = model.generate_content(prompt)
+            raw_text = response.text
             
-            st.subheader(f"Ergebnis für {name} ({currency} {price})")
-            st.markdown(response.text)
+            # --- STEIN-KLASSEN BADGES ---
+            if "Geschliffener Brillant" in raw_text:
+                st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbares Geschäftsmodell & Exponentielles Wachstum")
+            elif "Solider Wert" in raw_text:
+                st.info("🛡️ **Stein-Klasse: Solider Wert** – Fels in der Brandung mit gesunder Substanz")
+            elif "Sich entwickelnder Stein" in raw_text:
+                st.warning("🌱 **Stein-Klasse: Sich entwickelnder Stein** – Wachsendes Potenzial auf dem Weg nach oben")
+            elif "Unpolierter Rohstein" in raw_text:
+                st.warning("🪨 **Stein-Klasse: Unpolierter Rohstein** – Viel Potenzial, aber noch mit Risiken behaftet")
+            elif "Dividenden-Falle" in raw_text:
+                st.error("⚠️ **Stein-Klasse: Dividenden-Falle** – Hohe Ausschüttung, aber gefährliche Bilanzen")
+                
+            st.markdown("---")
+            st.markdown(raw_text)
             
         except Exception as e:
             st.error(f"Fehler bei der Analyse: {str(e)}")
