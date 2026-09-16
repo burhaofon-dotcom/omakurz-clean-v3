@@ -33,6 +33,9 @@ with st.sidebar:
     st.markdown("""
     Hier siehst du die Klassifizierung unserer Anlage-Steine nach Beate Sander & Ray Kurzweil:
     
+    * **⚠️ Dividenden-Falle:**  
+      Vorsicht! Hohe Ausschüttungen, die aber durch Schulden erkauft sind und Innovationen abwürgen.
+      
     * **🪨 Unpolierter Rohstein:**  
       Unternehmen mit viel Potenzial, aber noch Ecken, Kanten oder hohem Risiko. Muss erst geschliffen werden.
       
@@ -44,26 +47,23 @@ with st.sidebar:
       
     * **💎 Geschliffener Brillant:**  
       Die absolute Königsklasse. Unknackbares Geschäftsmodell, starker Burggraben und exponentielles Wachstum.
-      
-    * **⚠️ Dividenden-Falle:**  
-      Vorsicht! Hohe Ausschüttungen, die aber durch Schulden erkauft sind und Innovationen abwürgen.
     """)
     st.markdown("---")
     st.caption("Oma-Kurz-Kompass ULTRA v2")
 
 # --- HEADER & SUCHE ---
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
-st.caption("KI-gestützte Bilanz- & Wachstumsanalyse mit Stein-Hierarchie & neutralem Fazit")
+st.caption("KI-gestützte Bilanz- & Wachstumsanalyse mit Stein-Hierarchie, Währungsschutz & neutralem Fazit")
 
 st.markdown("---")
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, MSFT, TSLA, ENB):", "AAPL").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, ENB, T, RKT.L):", "AAPL").upper()
     analyze_btn = st.button("🚀 Analyse starten", use_container_width=True, type="primary")
 
 if analyze_btn and ticker_input:
-    with st.spinner(f"Lade Finanzdaten und starte KI-Stresstest für {ticker_input}..."):
+    with st.spinner(f"Lade internationale Börsendaten & starte KI-Stresstest für {ticker_input}..."):
         try:
             stock = yf.Ticker(ticker_input)
             info = stock.info
@@ -71,6 +71,12 @@ if analyze_btn and ticker_input:
             name = info.get('longName', ticker_input)
             price = info.get('currentPrice', info.get('regularMarketPrice', 0.0))
             currency = info.get('currency', 'USD')
+            
+            # --- WÄHRUNGS- & PENCE-KORREKTUR (z.B. für UK-Börsen) ---
+            if currency == 'GBp':
+                price = price / 100.0
+                currency = 'GBP'
+            
             pe_ratio = info.get('trailingPE', 'N/A')
             debt_to_equity = info.get('debtToEquity', 'N/A')
             payout_ratio = info.get('payoutRatio', 0.0)
@@ -90,6 +96,7 @@ if analyze_btn and ticker_input:
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass' - ein neutraler, analytischer Finanzkompass nach Beate Sander (Substanz) und Ray Kurzweil (exponentielles Wachstum).
             Analysiere {name} ({ticker_input}) rein objektiv anhand der Kennzahlen:
+            - Währung / Börsenplatz: {currency}
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
@@ -107,20 +114,20 @@ if analyze_btn and ticker_input:
             ### 3. Zukunftspotenzial / Skalierung (Der Accelerator)
             [Deine Analyse]
             
-            ### STEIN-KLASSE: [Wähle genau eines aus: Geschliffener Brillant | Solider Wert | Sich entwickelnder Stein | Unpolierter Rohstein | Dividenden-Falle]
+            ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords für die Zuordnung: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
             ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot ohne Handlungsbefehl]
             """
             
             response = model.generate_content(prompt)
             raw_text = response.text
             
-            # --- STEIN-KLASSEN BADGES ---
+            # --- VISUELLE STEIN-KLASSEN BADGES MIT SYMBOLEN ---
             if "Geschliffener Brillant" in raw_text:
                 st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbares Geschäftsmodell & Exponentielles Wachstum")
             elif "Solider Wert" in raw_text:
                 st.info("🛡️ **Stein-Klasse: Solider Wert** – Fels in der Brandung mit gesunder Substanz")
             elif "Sich entwickelnder Stein" in raw_text:
-                st.warning("🌱 **Stein-Klasse: Sich entwickelnder Stein** – Wachsendes Potenzial auf dem Weg nach oben")
+                st.info("🌱 **Stein-Klasse: Sich entwickelnder Stein** – Wachsendes Potenzial auf dem Weg nach oben")
             elif "Unpolierter Rohstein" in raw_text:
                 st.warning("🪨 **Stein-Klasse: Unpolierter Rohstein** – Viel Potenzial, aber noch mit Risiken behaftet")
             elif "Dividenden-Falle" in raw_text:
