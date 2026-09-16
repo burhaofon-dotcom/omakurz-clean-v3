@@ -27,39 +27,42 @@ model = genai.GenerativeModel(
     }
 )
 
-# --- SEITENLEISTE: GLOSSAR & PHILOSOPHIE ---
+# --- SEITENLEISTE: GLOSSAR & TICKER-HILFE ---
 with st.sidebar:
     st.title("📚 Der Edelstein-Glossar")
     st.markdown("""
-    Hier siehst du die Klassifizierung unserer Anlage-Steine nach Beate Sander & Ray Kurzweil:
+    * **⚠️ Dividenden-Falle:** Hohe Ausschüttungen durch Schulden erkauft.
+    * **🪨 Unpolierter Rohstein:** Viel Potenzial, aber hohe Risiken.
+    * **🌱 Sich entwickelnder Stein:** Wachsende Substanz, starker Accelerator.
+    * **🛡️ Solider Wert:** Stabiler Fels in der Brandung, krisenfester Cashflow.
+    * **💎 Geschliffener Brillant:** Unknackbarer Burggraben & exponentielles Wachstum.
+    """)
     
-    * **⚠️ Dividenden-Falle:**  
-      Vorsicht! Hohe Ausschüttungen, die aber durch Schulden erkauft sind und Innovationen abwürgen.
-      
-    * **🪨 Unpolierter Rohstein:**  
-      Unternehmen mit viel Potenzial, aber noch Ecken, Kanten oder hohem Risiko. Muss erst geschliffen werden.
-      
-    * **🌱 Sich entwickelnder Stein:**  
-      Wachsende Substanz, die Innovationen skaliert und auf dem Weg zu wahrer Größe ist (Zukunfts-Accelerator).
-      
-    * **🛡️ Solider Wert:**  
-      Stabiler Fels in der Brandung. Solide Bilanzen, krisenfester Cashflow, ideal für langfristigen Aufbau.
-      
-    * **💎 Geschliffener Brillant:**  
-      Die absolute Königsklasse. Unknackbares Geschäftsmodell, starker Burggraben und exponentielles Wachstum.
+    st.markdown("---")
+    st.title("💡 Ticker-Wegweiser")
+    st.markdown("""
+    Manchmal sucht man vergeblich nach den internationalen Kürzeln. Hier sind wichtige Kennungen:
+    * **🇯🇵 Japan (Tokyo):** Zahlen + `.T`  
+      *(z.B. Sony: `6758.T`, Toyota: `7203.T`, Shin-Etsu: `4063.T`, Nintendo: `7974.T`)*
+    * **🇬🇧 UK (London):** Kürzel + `.L`  
+      *(z.B. Rentokil: `RTO.L`, Shell: `SHEL.L`)*
+    * **🇺🇸 USA:** Normales Kürzel  
+      *(z.B. Apple: `AAPL`, Microsoft: `MSFT`)*
+    * **🇨🇦 Kanada:** Normales Kürzel  
+      *(z.B. Enbridge: `ENB`)*
     """)
     st.markdown("---")
     st.caption("Oma-Kurz-Kompass ULTRA v2")
 
 # --- HEADER & SUCHE ---
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
-st.caption("KI-gestützte Bilanz- & Wachstumsanalyse mit Stein-Hierarchie, Währungsschutz & neutralem Fazit")
+st.caption("KI-gestützte Bilanz- & Wachstumsanalyse mit internationalem Ticker-Wegweiser & Farb-Design")
 
 st.markdown("---")
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, ENB, T, RKT.L):", "AAPL").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. AAPL, ENB, 6758.T, RTO.L):", "AAPL").upper()
     analyze_btn = st.button("🚀 Analyse starten", use_container_width=True, type="primary")
 
 if analyze_btn and ticker_input:
@@ -72,7 +75,7 @@ if analyze_btn and ticker_input:
             price = info.get('currentPrice', info.get('regularMarketPrice', 0.0))
             currency = info.get('currency', 'USD')
             
-            # --- WÄHRUNGS- & PENCE-KORREKTUR (z.B. für UK-Börsen) ---
+            # --- WÄHRUNGS- & PENCE-KORREKTUR ---
             if currency == 'GBp':
                 price = price / 100.0
                 currency = 'GBP'
@@ -101,27 +104,31 @@ if analyze_btn and ticker_input:
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Ausschüttungsquote: {payout_ratio * 100 if payout_ratio else 'N/A'}%
             
-            WICHTIG: Gib KEINE direkten Anlageempfehlungen wie "Kaufen" oder "Finger weg!". Keine Anlageberatung! Formuliere stattdessen objektiv, wie sich das Unternehmen in einem breit diversifizierten Depot (z.B. in kleinen Tranchen oder für bestimmte Anlegertypen) verhalten könnte.
+            WICHTIG: Gib KEINE direkten Anlageempfehlungen wie "Kaufen" oder "Finger weg!". Keine Anlageberatung! Formuliere stattdessen objektiv, wie sich das Unternehmen in einem breit diversifizierten Depot verhalten könnte.
             
-            Bewerte die Aktie prägnant in genau dieser Struktur:
+            Bewerte die Aktie prägnant in genau dieser Struktur (verwende exakt diese Überschriften mit Doppelkreuz):
             
-            ### 1. Schulden & Stabilität
+            ## 1. Schulden & Stabilität
             [Deine Analyse]
             
-            ### 2. Dividenden-Sicherheit vs. Falle
+            ## 2. Dividenden-Sicherheit vs. Falle
             [Deine Analyse]
             
-            ### 3. Zukunftspotenzial / Skalierung (Der Accelerator)
+            ## 3. Zukunftspotenzial / Skalierung (Der Accelerator)
             [Deine Analyse]
             
-            ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords für die Zuordnung: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
+            ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
             ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot ohne Handlungsbefehl]
             """
             
             response = model.generate_content(prompt)
             raw_text = response.text
             
-            # --- VISUELLE STEIN-KLASSEN BADGES MIT SYMBOLEN ---
+            # --- TEXT PARSEN UND FARBLICH IN KARTEN / CONTAINER EINBETTEN ---
+            # Wir splitten die KI-Antwort nach den Abschnitten, um sie psychologisch ansprechend darzustellen
+            parts = raw_text.split("## ")
+            
+            # --- STEIN-KLASSEN BADGES ---
             if "Geschliffener Brillant" in raw_text:
                 st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbares Geschäftsmodell & Exponentielles Wachstum")
             elif "Solider Wert" in raw_text:
@@ -134,7 +141,27 @@ if analyze_btn and ticker_input:
                 st.error("⚠️ **Stein-Klasse: Dividenden-Falle** – Hohe Ausschüttung, aber gefährliche Bilanzen")
                 
             st.markdown("---")
-            st.markdown(raw_text)
+            
+            # Schöne farbige visuelle Container für die 3 Kernbereiche
+            for part in parts:
+                if part.startswith("1. Schulden"):
+                    with st.container(border=True):
+                        st.markdown("### 🏛️ 1. Schulden & Stabilität")
+                        st.markdown(part.replace("1. Schulden & Stabilität", "").strip())
+                elif part.startswith("2. Dividenden"):
+                    with st.container(border=True):
+                        st.markdown("### 💰 2. Dividenden-Sicherheit vs. Falle")
+                        st.markdown(part.replace("2. Dividenden-Sicherheit vs. Falle", "").strip())
+                elif part.startswith("3. Zukunftspotenzial"):
+                    with st.container(border=True):
+                        st.markdown("### 🚀 3. Zukunftspotenzial / Skalierung (Der Accelerator)")
+                        st.markdown(part.replace("3. Zukunftspotenzial / Skalierung (Der Accelerator)", "").strip())
+            
+            # Fazit separat am Ende ausgeben
+            if "FAZIT:" in raw_text:
+                fazit_text = raw_text.split("FAZIT:")[-1].strip()
+                st.markdown("---")
+                st.info(f"💡 **FAZIT:** {fazit_text}")
             
         except Exception as e:
             st.error(f"Fehler bei der Analyse: {str(e)}")
