@@ -7,7 +7,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v4",
+    page_title="Oma-Kurz-Kompass ULTRA v5",
     page_icon="🧭",
     layout="wide"
 )
@@ -75,7 +75,7 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v4")
+    st.caption("Oma-Kurz-Kompass ULTRA v5 (mit Anti-Rate-Limit Caching)")
 
 # --- HEADER ---
 st.markdown("""
@@ -87,8 +87,22 @@ st.markdown("""
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "ALNY").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "ALV.DE").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
+
+# --- CACHED KI-ABFRAGE MIT INTELLIGENTEM RETRY-PUFFER ---
+@st.cache_data(ttl=3600, show_spinner=False)
+mathrm_cached_generation(prompt_text):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt_text)
+            return response.text
+        except Exception as api_err:
+            if "429" in str(api_err) and attempt < max_retries - 1:
+                time.sleep(12 + (attempt * 10)) # Intelligentes exponentielles Warten (12s, 22s...)
+            else:
+                raise api_err
 
 if analyze_btn and ticker_input:
     with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input} durch die Brille der Titanen..."):
@@ -138,7 +152,7 @@ if analyze_btn and ticker_input:
                 elif pe_ratio < 30:
                     base_score += 5
                 else:
-                    base_score -= 5 # Milder Malus für Wachstum
+                    base_score -= 5
             
             # 2. Schulden-Check mit Kontext (Wachstums- vs. Pleiterisiko)
             if isinstance(debt_to_equity, (int, float)):
@@ -147,15 +161,14 @@ if analyze_btn and ticker_input:
                 elif debt_to_equity < 150:
                     base_score += 0
                 else:
-                    # Theranos-Nikola-Detektor: Hohe Schulden/Verluste sind ok, WENN Marktvalidierung da ist (hohe Marktkapitalisierung)
-                    if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000: # > 5 Mrd. Marktkapitalisierung
-                        base_score -= 5  # Kompensation durch institutionelle Marktreife
+                    if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000:
+                        base_score -= 5
                     else:
-                        base_score -= 25 # Harter Malus für hochverschuldete Small Caps ohne Beweise
+                        base_score -= 25
             
-            # 3. Marktkapitalisierung & Validierungs-Bonus (Schutz vor Luftschlössern)
+            # 3. Marktkapitalisierung & Validierungs-Bonus
             if isinstance(market_cap, (int, float)):
-                if market_cap > 10_000_000_000: # Über 10 Mrd. USD/EUR Marktwert = etablierter Marktteilnehmer
+                if market_cap > 10_000_000_000:
                     base_score += 20
                 elif market_cap > 2_000_000_000:
                     base_score += 10
@@ -192,12 +205,12 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- ERWEITERTER KI-PROMPT MIT DETEKTOR-LOGIK ---
+            # --- ERWEITERTER KI-PROMPT ---
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander (Substanz), Ray Kurzweil (Technologie), Charlie Munger (Burggraben & Skepsis), Howard Marks (Zyklen) und Max Tegmark (systemische Resilienz & Validierung) vereint.
             
             WICHTIGER SCHWERPUNKT (Theranos-Nikola-Detektor): 
-            Prüfe kritisch, ob es sich um echte, unabhängig verifizierte wissenschaftliche / kommerzielle Meilensteine (z.B. zugelassene Produkte, klinische Phase-3-Erfolge, echte Pharma-Partner und Umsätze) handelt oder ob das Unternehmen zu stark von reinen Marketing-Versprechungen ohne Substanz lebt. Blender müssen entlarvt werden; echte Pioniere mit temporär hohen Investitionen müssen fair bewertet werden.
+            Prüfe kritisch, ob es sich um echte, unabhängig verifizierte wissenschaftliche / kommerzielle Meilensteine (z.B. zugelassene Produkte, klinische Phase-3-Erfolge, echte Pharma-Partner und Umsätze) handelt oder ob das Unternehmen zu stark von reinen Marketing-Versprechungen ohne Substanz lebt.
             
             Analysiere {name} ({ticker_input}) tiefgehend:
             - Währung / Börsenplatz: {currency} (ca. {price_eur:.2f} EUR)
@@ -217,7 +230,7 @@ if analyze_btn and ticker_input:
             [Wie wandelt sich das Unternehmen technologisch? Wie hoch ist die systemische Zukunftsfähigkeit und Skalierbarkeit?]
             
             ## 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)
-            [Gibt es unabhängige wissenschaftliche/regulatorische Validierungen (z.B. klinische Phasen, FDA, globale Partner) oder handelt es sich um ungeprüfte Versprechungen? Wie stark ist der echte Burggraben?]
+            [Gibt es unabhängige wissenschaftliche/regulatorische Validierungen oder handelt es sich um ungeprüfte Versprechungen? Wie stark ist der echte Burggraben?]
             
             ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
             [Analysiere Bilanzstabilität, Verschuldung und wo sich das Unternehmen im makroökonomischen Zyklus befindet.]
@@ -229,20 +242,8 @@ if analyze_btn and ticker_input:
             ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot]
             """
             
-            # --- ROBUSTE KI-ABFRAGE MIT RETRY ---
-            response = None
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = model.generate_content(prompt)
-                    break
-                except Exception as api_err:
-                    if "429" in str(api_err) and attempt < max_retries - 1:
-                        time.sleep(10)
-                    else:
-                        raise api_err
-            
-            raw_text = response.text
+            # --- AUFRUF DER CACHED FUNKTION ---
+            raw_text = cached_generation(prompt)
             
             # --- STEIN-KLASSEN BADGES ---
             if "Geschliffener Brillant" in raw_text:
@@ -291,7 +292,7 @@ if analyze_btn and ticker_input:
             # --- DOWNLOAD-BUTTON ---
             st.markdown("---")
             report_filename = f"Compass_Score_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v4 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
+            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v5 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
             
             st.download_button(
                 label="📥 Analyse-Logbuch mit Compass Integrity Score herunterladen",
@@ -303,6 +304,6 @@ if analyze_btn and ticker_input:
             
         except Exception as e:
             if "429" in str(e):
-                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde kurzzeitig erreicht. Bitte warte einen Moment (ca. 15–30 Sekunden) und starte die Analyse dann erneut.")
+                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde vorübergehend erreicht. Der automatische Puffer hat es versucht, aber Google bittet um eine kleine Verschnaufpause. Bitte warte 30 Sekunden und klicke erneut.")
             else:
                 st.error(f"Fehler bei der Navigation/Analyse: {str(e)}")
