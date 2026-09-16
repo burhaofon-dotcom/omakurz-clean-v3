@@ -20,13 +20,12 @@ except Exception as e:
 
 # --- MODELL INITIALISIERUNG ---
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-2.0-flash",
     generation_config={
         "temperature": 0.3,
         "max_output_tokens": 2048,
     }
 )
-
 st.title("💎 Oma-Kurz-Kompass ULTRA v2")
 st.caption("KI-gestützte Bilanz- & Wachstumsanalyse nach Beate Sander & Ray Kurzweil")
 
