@@ -1,4 +1,3 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -86,7 +85,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- CACHED WECHSELKURS ABFRAGE (MIT HARTE FALLBACKS) ---
+# --- CACHED WECHSELKURS ABFRAGE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_fx_rate_cached(currency):
     if currency in ['EUR', 'EU']:
@@ -103,16 +102,14 @@ def fetch_fx_rate_cached(currency):
     except Exception:
         pass
     
-    # Harte Notfall-Kurse (falls Yahoo FX blockiert)
     fallback_rates = {'JPY': 0.0062, 'USD': 0.92, 'GBP': 1.18}
     return fallback_rates.get(currency, 1.0)
 
-# --- CACHED YFINANCE ABFRAGE MIT HIGH-AVAILABILITY FALLBACKS ---
+# --- CACHED YFINANCE ABFRAGE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     
-    # 1. Kurs & Verlauf abrufen
     df_fast = stock.history(period="1y")
     latest_price = 0.0
     if not df_fast.empty:
@@ -124,7 +121,6 @@ def fetch_stock_data_cached(ticker_symbol):
     except Exception:
         info = {}
     
-    # Fast-Info Fallback (wird von Yahoo seltener geblockt)
     fast_info = getattr(stock, 'fast_info', {})
     
     currency = info.get('currency') or getattr(fast_info, 'currency', 'USD')
@@ -139,56 +135,21 @@ def fetch_stock_data_cached(ticker_symbol):
     fx_rate = fetch_fx_rate_cached(currency)
     price_eur = price * fx_rate if isinstance(price, (int, float)) else price
 
-    # Kennzahlen-Fallbacks
-    pe_ratio = info.get('trailingPE')
-    debt_to_equity = info.get('debtToEquity')
-    payout_ratio = info.get('payoutRatio', 0.0)
-    market_cap = info.get('marketCap') or getattr(fast_info, 'market_cap', 0)
-    
     return {
         'longName': info.get('longName', ticker_symbol),
         'currentPrice': price,
         'currency': currency,
         'price_eur': price_eur,
-        'trailingPE': pe_ratio,
-        'debtToEquity': debt_to_equity,
-        'payoutRatio': payout_ratio,
-        'marketCap': market_cap,
+        'trailingPE': info.get('trailingPE'),
+        'debtToEquity': info.get('debtToEquity'),
+        'payoutRatio': info.get('payoutRatio', 0.0),
+        'marketCap': info.get('marketCap') or getattr(fast_info, 'market_cap', 0),
         'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', getattr(fast_info, 'year_high', 'N/A')),
         'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', getattr(fast_info, 'year_low', 'N/A')),
         'df_history': df_fast
     }
 
-# --- CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def generate_ki_analysis_cached(prompt_text):
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = model.generate_content(prompt_text)
-            return response.text
-        except Exception as api_err:
-            if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(10 + (attempt * 10))
-            else:
-                raise api_err
-
-# --- EINGABE & SESSION STATE HANDLING ---
-col_search, col_space = st.columns([2, 1])
-with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T, 6501.T):", "6501.T").upper()
-    analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
-
-if analyze_btn and ticker_input:
-    st.session_state["active_ticker"] = ticker_input
-
-if "active_ticker" in st.session_state:
-    current_ticker = st.session_state["active_ticker"]
-    
-    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {current_ticker}..."):
-        try:
-            info = fetch_stock_data_cached(current_ticker)
-            # --- INTERAKTIVER CHART RENDERER ---
+# --- INTERAKTIVER CHART RENDERER ---
 def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
     st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
     
@@ -230,6 +191,36 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Keine historischen Kursdaten verfügbar.")
+
+# --- CACHED KI-GENERIERUNG ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def generate_ki_analysis_cached(prompt_text):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt_text)
+            return response.text
+        except Exception as api_err:
+            if "429" in str(api_err) and attempt < max_retries - 1:
+                time.sleep(10 + (attempt * 10))
+            else:
+                raise api_err
+
+# --- EINGABE & APP LOGIK ---
+col_search, col_space = st.columns([2, 1])
+with col_search:
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T, 6501.T):", "6501.T").upper()
+    analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
+
+if analyze_btn and ticker_input:
+    st.session_state["active_ticker"] = ticker_input
+
+if "active_ticker" in st.session_state:
+    current_ticker = st.session_state["active_ticker"]
+    
+    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {current_ticker}..."):
+        try:
+            info = fetch_stock_data_cached(current_ticker)
             
             name = info['longName']
             price = info['currentPrice']
@@ -243,7 +234,7 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
             fifty_two_low = info['fiftyTwoWeekLow']
             df_history = info['df_history']
             
-            # --- COMPASS INTEGRITY SCORE ---
+            # SCORE BERECHNUNG
             base_score = 50
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
                 if pe_ratio < 15: base_score += 15
@@ -263,7 +254,7 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
                 
             integrity_score = max(15, min(100, base_score))
             
-            # --- UI METRIKEN ---
+            # METRIKEN
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{current_ticker}`)")
             
             col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
@@ -279,7 +270,7 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
             
             st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte")
 
-            # --- INTERAKTIVER CHART ---
+            # CHART
             render_interactive_chart(current_ticker, name, df_history)
 
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
@@ -291,7 +282,7 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
 
             st.markdown("---")
             
-            # --- PROMPT ---
+            # KI-PROMPT
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander, Ray Kurzweil, Charlie Munger, Howard Marks und Max Tegmark vereint.
             
@@ -363,6 +354,6 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
                 
         except Exception as e:
             if "429" in str(e):
-                st.warning("⏳ API-Pause: Sowohl YFinance als auch Gemini bitten um eine kurze Pause. Warte 20-30 Sekunden.")
+                st.warning("⏳ API-Pause: Bitte 20-30 Sekunden warten und erneut versuchen.")
             else:
                 st.error(f"Fehler: {str(e)}")
