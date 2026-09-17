@@ -105,7 +105,7 @@ def fetch_fx_rate_cached(currency):
     fallback_rates = {'JPY': 0.0062, 'USD': 0.92, 'GBP': 1.18}
     return fallback_rates.get(currency, 1.0)
 
-# --- CACHED YFINANCE ABFRAGE MIT AUTO-ADJUST ---
+# --- CACHED YFINANCE ABFRAGE MIT AUTO-ADJUST & FAST_INFO FALLBACK ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
@@ -114,7 +114,9 @@ def fetch_stock_data_cached(ticker_symbol):
     df_fast = stock.history(period="1y", auto_adjust=True)
     latest_price = 0.0
     if not df_fast.empty:
-        latest_price = float(df_fast['Close'].iloc[-1])
+        # Prüfen, ob 'Close' oder 'Adj Close' vorhanden ist
+        close_col = 'Close' if 'Close' in df_fast.columns else df_fast.columns[0]
+        latest_price = float(df_fast[close_col].iloc[-1])
 
     info = {}
     try:
@@ -122,10 +124,14 @@ def fetch_stock_data_cached(ticker_symbol):
     except Exception:
         info = {}
     
-    fast_info = getattr(stock, 'fast_info', {})
+    fast_info = {}
+    try:
+        fast_info = stock.fast_info or {}
+    except Exception:
+        fast_info = {}
     
-    currency = info.get('currency') or getattr(fast_info, 'currency', 'USD')
-    price = info.get('currentPrice') or info.get('regularMarketPrice') or getattr(fast_info, 'last_price', latest_price)
+    currency = info.get('currency') or fast_info.get('currency', 'USD')
+    price = info.get('currentPrice') or info.get('regularMarketPrice') or fast_info.get('lastPrice', latest_price)
     if not price or price == 0.0:
         price = latest_price
         
@@ -144,9 +150,9 @@ def fetch_stock_data_cached(ticker_symbol):
         'trailingPE': info.get('trailingPE'),
         'debtToEquity': info.get('debtToEquity'),
         'payoutRatio': info.get('payoutRatio', 0.0),
-        'marketCap': info.get('marketCap') or getattr(fast_info, 'market_cap', 0),
-        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', getattr(fast_info, 'year_high', 'N/A')),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', getattr(fast_info, 'year_low', 'N/A')),
+        'marketCap': info.get('marketCap') or fast_info.get('marketCap', 0),
+        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', fast_info.get('yearHigh', 'N/A')),
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', fast_info.get('yearLow', 'N/A')),
         'df_history': df_fast
     }
 
@@ -173,10 +179,13 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
         df = fetch_chart_history_cached(ticker_symbol, period_choice)
     
     if not df.empty:
+        # Dynamisch die richtige Kursspalte ermitteln (Close vs Adj Close)
+        y_col = 'Close' if 'Close' in df.columns else df.columns[0]
+        
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df.index,
-            y=df['Close'],
+            y=df[y_col],
             mode='lines',
             name='Schlusskurs',
             line=dict(color='#d4af37', width=2),
