@@ -47,9 +47,9 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
-# --- MODELL INITIALISIERUNG ---
+# --- MODELL INITIALISIERUNG (FIX: GÜLTIGES MODELL NATIVE ANGEPASST) ---
 model = genai.GenerativeModel(
-    model_name="gemini-3.6-flash",
+    model_name="gemini-1.5-flash",
     generation_config={
         "temperature": 0.2,
         "max_output_tokens": 2000,
