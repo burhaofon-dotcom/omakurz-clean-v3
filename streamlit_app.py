@@ -47,14 +47,7 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
-# --- MODELL INITIALISIERUNG MIT AUTOMATISCHEM FALLBACK ---
-# Liste von Modellen nach Priorität
-MODEL_CANDIDATES = [
-    "gemini-3.6-flash",
-    "gemini-2.5-flash",
-    "gemini-1.5-flash"
-]
-
+# --- CACHED KI-GENERIERUNG MIT RETRY & MODELL-FALLBACK ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
     last_exception = None
@@ -71,11 +64,16 @@ def generate_ki_analysis_cached(prompt_text):
             return response.text
         except Exception as err:
             last_exception = err
-            # Falls Modell nicht gefunden wird (404), probiere das nächste in der Liste
+            # Wenn 404 (Modell existiert nicht), direkt das nächste Modell versuchen
+            if "404" in str(err) or "not found" in str(err).lower():
+                continue
+            # Bei Rate-Limits (429) kurz warten
+            if "429" in str(err):
+                time.sleep(5)
+                continue
             continue
             
     raise last_exception
-
 # --- SEITENLEISTE ---
 with st.sidebar:
     st.title("🧭 Das Titanen-Quartett + 1")
