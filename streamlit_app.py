@@ -47,23 +47,21 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
-# --- MODELL-KANDIDATEN (MUSS HIER VOR DER FUNKTION STEHEN!) ---
+# --- MODELL-KANDIDATEN ---
+# WICHTIG: gemini-1.5-flash, gemini-1.5-flash-8b und gemini-1.5-pro wurden von Google
+# abgeschaltet (Stand 2026) und liefern nur noch "model not found". Aktuelle Nachfolger:
 MODEL_CANDIDATES = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-pro"
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro"
 ]
 
-# Globales Modell-Objekt (damit 'model' überall im Code definiert ist)
-model = genai.GenerativeModel(
-    model_name=MODEL_CANDIDATES[0],
-    generation_config={
-        "temperature": 0.3,
-        "max_output_tokens": 3200,
-    }
-)
+# Hinweis: Kein globales, fest verdrahtetes 'model'-Objekt mehr nötig - der Fallback
+# unten probiert bei Bedarf automatisch alle MODEL_CANDIDATES der Reihe nach durch.
 
 # --- CACHED KI-GENERIERUNG MIT RETRY & MODELL-FALLBACK ---
+# (Es gibt nur noch EINE Definition dieser Funktion - die doppelte, die vorher weiter
+# unten im Skript stand und diese hier überschrieben hat, wurde entfernt.)
 @st.cache_data(ttl=86400, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
     last_exception = None
@@ -83,8 +81,9 @@ def generate_ki_analysis_cached(prompt_text):
             if "429" in str(err):
                 time.sleep(5)
             continue
-            
+
     raise last_exception
+
 # --- SEITENLEISTE ---
 with st.sidebar:
     st.title("🧭 Das Titanen-Quartett + 1")
@@ -123,15 +122,15 @@ with col_search:
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
-    
+
     info = {}
     try:
         info = stock.info or {}
     except Exception:
         pass
-        
+
     fast_info = getattr(stock, 'fast_info', {})
-    
+
     # Historie nur 1x laden
     df_hist = pd.DataFrame()
     try:
@@ -170,33 +169,19 @@ def fetch_stock_data_cached(ticker_symbol):
         'df_history': df_hist
     }
 
-# --- 2. CACHED KI-GENERIERUNG MIT RETRY ---
-@st.cache_data(ttl=86400, show_spinner=False)
-def generate_ki_analysis_cached(prompt_text):
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = model.generate_content(prompt_text)
-            return response.text
-        except Exception as api_err:
-            if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(10 + (attempt * 10))
-            else:
-                raise api_err
-
 if analyze_btn and ticker_input:
     with st.spinner(f"Führe Domino- & Narrativ-Detektor aus & durchleuchte {ticker_input}..."):
         try:
             info = fetch_stock_data_cached(ticker_input)
-            
+
             name = info['longName']
             price = info['currentPrice']
             currency = info['currency']
-            
+
             if currency == 'GBp':
                 price = price / 100.0
                 currency = 'GBP'
-            
+
             price_eur = price
             if currency != 'EUR' and isinstance(price, (int, float)) and price > 0:
                 try:
@@ -207,14 +192,14 @@ if analyze_btn and ticker_input:
                         price_eur = price * fx_rate
                 except Exception:
                     pass
-            
+
             pe_ratio = info['trailingPE']
             debt_to_equity = info['debtToEquity']
             payout_ratio = info['payoutRatio']
             market_cap = info['marketCap']
             fifty_two_high = info['fiftyTwoWeekHigh']
             fifty_two_low = info['fiftyTwoWeekLow']
-            
+
             # --- COMPASS INTEGRITY SCORE (ROBUSTE MATHEMATIK) ---
             base_score = 50
 
@@ -256,21 +241,21 @@ if analyze_btn and ticker_input:
                     base_score -= 15
 
             integrity_score = max(10, min(100, base_score))
-            
+
             # --- UI METRIKEN ---
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
-            
+
             col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
             if currency == 'EUR':
                 col_m1.metric("Kurs", f"{price:.2f} EUR")
             else:
                 col_m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
-                
+
             col_m2.metric("KGV", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A (Verlust)")
             col_m3.metric("Schulden (D/E)", f"{de_actual:.1f}%" if isinstance(de_actual, (int, float)) else "N/A")
             col_m4.metric("Ausschüttung", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) and payout_ratio else "N/A")
             col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
-            
+
             st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte")
 
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
@@ -279,13 +264,13 @@ if analyze_btn and ticker_input:
                     st.markdown(f"**Marktkapitalisierung:** {market_cap:,} {currency}" if isinstance(market_cap, (int, float)) else f"**Marktkapitalisierung:** {market_cap}")
                 with col_t2:
                     st.markdown(f"**52-Wochen-Spanne:** {fifty_two_low} – {fifty_two_high} {currency}")
-            
+
             # --- INTERAKTIVER CHART (CACHED HISTORIE) ---
             df_chart = info['df_history']
             if not df_chart.empty:
                 st.markdown(f"### 📈 Kursverlauf für **{name}**")
                 y_col = 'Close' if 'Close' in df_chart.columns else df_chart.columns[0]
-                
+
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=df_chart.index,
@@ -308,22 +293,22 @@ if analyze_btn and ticker_input:
                 st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("---")
-            
+
             # --- STRUKTURIERTER PROMPT (KOMPAKT & AUF DEN PUNKT) ---
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass ULTRA' (Analyst auf Titanen-Niveau: Sander, Kurzweil, Munger, Marks, Tegmark).
-            
+
             Analysiere {name} ({ticker_input}):
             - KGV: {pe_ratio if pe_ratio else 'Verlust/Keine Daten'}
             - Schulden D/E: {de_actual if de_actual else 'Unklar'}%
             - Score: {integrity_score}/100
-            
+
             VERZICHTE komplett auf allgemeine Firmen-Beschreibungen oder Einleitungen! Gehe sofort in die Tiefe.
-            
+
             Wichtigste Aufgabe:
             - Klumpenrisiken, Gegenpartei-Risiken & Vorstands-Narrative/Fata-Morganas aufdecken.
             - Passen Margen zum KGV? Gab es Zielverfehlungen oder abrupte Restrukturierungen?
-            
+
             Nutze exakt folgende Abschnitte:
             SECTION_TRANSFORMATION: [Prüfung auf Zukunfts-Hype vs. reale Technologie]
             SECTION_DOMINO: [Burggraben, Klumpenrisiko & Domino-Detektor]
@@ -332,10 +317,10 @@ if analyze_btn and ticker_input:
             STEIN_KLASSE: [Wähle exakt eine Option aus: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
             FAZIT: [Kurzer, sachlicher Kernaussage-Satz]
             """
-            
+
             # KI Abfrage
             raw_text = generate_ki_analysis_cached(prompt)
-            
+
             # --- STEIN-KLASSE EXTRACTION & DISPLAY ---
             stein_klasse = "Unbekannt"
             if "STEIN_KLASSE:" in raw_text:
@@ -357,7 +342,7 @@ if analyze_btn and ticker_input:
                 st.warning(f"🏷️ **Stein-Klasse: {stein_klasse}**")
 
             st.markdown("---")
-            
+
             # --- ANZEIGE DER SEKTIONEN ---
             def parse_section(text, tag):
                 if tag in text:
