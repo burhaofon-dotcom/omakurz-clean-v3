@@ -8,7 +8,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5.1",
+    page_title="Oma-Kurz-Kompass ULTRA v5.4",
     page_icon="🧭",
     layout="wide"
 )
@@ -70,36 +70,32 @@ with st.sidebar:
     st.markdown("---")
     st.title("💡 Ticker-Wegweiser")
     st.markdown("""
-    * **🇯🇵 Japan (Tokyo):** `.T` *(z.B. Fujifilm: `4901.T`)*
-    * **🇬🇧 UK (London):** `.L` *(z.B. Rentokil: `RTO.L`)*
-    * **🇺🇸 USA:** Normal *(z.B. Alnylam: `ALNY`)*
-    * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
+    * **🇺🇸 REITs & USA:** z.B. `MPW` (Medical Properties), `ALNY`
+    * **🇩🇪 Deutschland:** `.DE` *(z.B. `GBF.DE`, `ALV.DE`)*
+    * **🇯🇵 Japan:** `.T` *(z.B. `4901.T`)*
+    * **🇬🇧 UK:** `.L` *(z.B. `RTO.L`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.1 (Optimiert mit Jimmy-Caching & Retry)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.4 (Inkl. Multi-Sektor Domino- & Narrative-Detektor)")
 
 # --- HEADER ---
 st.markdown("""
 <div class="main-header">
     <h1>🧭 OMA-KURZ-KOMPASS ULTRA</h1>
-    <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Theranos-Nikola-Detektor“</p>
+    <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Domino-Narrativ-Detektor“</p>
 </div>
 """, unsafe_allow_html=True)
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "4901.T").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. MPW, GBF.DE, ALNY, ALV.DE):", "MPW").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
-# --- 1. JIMMY-FUNKTION: CACHED YFINANCE ABFRAGE (1 STUNDE TTL) ---
+# --- 1. CACHED YFINANCE ABFRAGE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     info = stock.info or {}
-    
-    # Historie mit auto_adjust=True für split-bereinigte Kurse
-    df_fast = stock.history(period="1y", auto_adjust=True)
-    
     return {
         'longName': info.get('longName', ticker_symbol),
         'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0.0)),
@@ -109,18 +105,16 @@ def fetch_stock_data_cached(ticker_symbol):
         'payoutRatio': info.get('payoutRatio', 0.0),
         'marketCap': info.get('marketCap', 0),
         'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
-        'df_history': df_fast
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
     }
 
-# --- CACHED CHART RENDERER MIT AUTO_ADJUST (SPLIT-KORREKTUR) ---
+# --- CACHED CHART RENDERER ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_chart_history_cached(ticker_symbol, period_choice):
     stock = yf.Ticker(ticker_symbol)
-    # auto_adjust=True glättet Aktiensplits sauber heraus
     return stock.history(period=period_choice, auto_adjust=True)
 
-# --- 2. JIMMY-FUNKTION: CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
+# --- 2. CACHED KI-GENERIERUNG MIT RETRY ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
     max_retries = 3
@@ -130,14 +124,13 @@ def generate_ki_analysis_cached(prompt_text):
             return response.text
         except Exception as api_err:
             if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(10 + (attempt * 10))  # Wartet 10s, dann 20s...
+                time.sleep(10 + (attempt * 10))
             else:
                 raise api_err
 
 if analyze_btn and ticker_input:
-    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input}..."):
+    with st.spinner(f"Führe Domino- & Narrativ-Detektor aus & durchleuchte {ticker_input}..."):
         try:
-            # 1. Daten holen (Cached)
             info = fetch_stock_data_cached(ticker_input)
             
             name = info['longName']
@@ -168,27 +161,39 @@ if analyze_btn and ticker_input:
             
             # --- COMPASS INTEGRITY SCORE ---
             base_score = 50
+
+            # 1. KGV-Bewertung
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
                 if pe_ratio < 15: base_score += 15
                 elif pe_ratio < 30: base_score += 5
-                else: base_score -= 5
-            
+                else: base_score -= 10
+
+            # 2. Schulden-Bewertung (D/E Skalierungs-Fix)
+            de_actual = None
             if isinstance(debt_to_equity, (int, float)):
-                if debt_to_equity < 50: base_score += 15
-                elif debt_to_equity > 150:
-                    if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000:
-                        base_score -= 5
-                    else:
-                        base_score -= 25
-            
+                de_actual = debt_to_equity / 100.0 if debt_to_equity > 500 else debt_to_equity
+                if de_actual < 50: base_score += 15
+                elif de_actual > 150: base_score -= 25
+                elif de_actual > 100: base_score -= 10
+
+            # 3. Marktkapitalisierung
             if isinstance(market_cap, (int, float)):
-                if market_cap > 10_000_000_000: base_score += 20
-                elif market_cap > 2_000_000_000: base_score += 10
-            
+                if market_cap > 10_000_000_000: base_score += 15
+                elif market_cap > 2_000_000_000: base_score += 5
+
+            # 4. Ausschüttungsquote
             if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
                 base_score += 10
-                
-            integrity_score = max(15, min(100, base_score))
+
+            # 5. Absturz- & Trend-Detektor (Malus bei Einbruch vom 52-Wochen-Hoch)
+            if isinstance(fifty_two_high, (int, float)) and fifty_two_high > 0 and isinstance(price, (int, float)):
+                drop_from_high = ((fifty_two_high - price) / fifty_two_high) * 100
+                if drop_from_high > 40:
+                    base_score -= 30  # Massiver Malus bei Kurssturz > 40%
+                elif drop_from_high > 25:
+                    base_score -= 15
+
+            integrity_score = max(10, min(100, base_score))
             
             # --- UI METRIKEN ---
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
@@ -200,7 +205,7 @@ if analyze_btn and ticker_input:
                 col_m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
                 
             col_m2.metric("KGV", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A")
-            col_m3.metric("Schulden (D/E)", f"{debt_to_equity}%" if isinstance(debt_to_equity, (int, float)) else "N/A")
+            col_m3.metric("Schulden (D/E)", f"{de_actual:.1f}%" if isinstance(de_actual, (int, float)) else "N/A")
             col_m4.metric("Ausschüttung", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) and payout_ratio else "N/A")
             col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
             
@@ -213,7 +218,7 @@ if analyze_btn and ticker_input:
                 with col_t2:
                     st.markdown(f"**52-Wochen-Spanne:** {fifty_two_low} – {fifty_two_high} {currency}")
             
-            # --- INTERAKTIVER CHART MIT SPLIT-KORREKTUR ---
+            # --- INTERAKTIVER CHART ---
             df_chart = fetch_chart_history_cached(ticker_input, "1y")
             if not df_chart.empty:
                 st.markdown(f"### 📈 Kursverlauf für **{name}**")
@@ -242,17 +247,31 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- PROMPT ---
+            # --- PROMPT: GESCHÄRFT FÜR MULTI-SEKTOR DOMINO- & NARRATIV-RISIKEN ---
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander, Ray Kurzweil, Charlie Munger, Howard Marks und Max Tegmark vereint.
             
-            WICHTIGER SCHWERPUNKT (Theranos-Nikola-Detektor): 
-            Prüfe kritisch auf echte Validierung vs. Marketing-Hype.
+            WICHTIGER SCHWERPUNKT (Multi-Sektor Domino- & Story-Detektor):
+            Prüfe das Unternehmen streng auf folgende branchenspezifische Kaskaden-Risiken und Vorstands-Narrative:
             
+            1. REITs & Immobilien (Beispiel MPW):
+               - Gibt es ein extremes Klumpenrisiko durch einzelne Großmieter/Kunden?
+               - Besteht Gefahr einer Kettenreaktion, wenn der Hauptnutzer ins Straucheln gerät?
+               - Werden Dividenden aus Substanz oder Schulden gezahlt?
+            
+            2. Investmentbanken & Finanzen (Beispiel Lehman Brothers):
+               - Unübersichtliche Bilanzen, Derivate-Abwicklungen, Verbriefungsrisiken, hoher Leverage?
+               - Wie empfindlich reagiert das Haus auf Gegenpartei-Risiken (Counterparty Risk)?
+            
+            3. Dienstleistungs-, Industrie- & Bauunternehmen:
+               - Passt die Bewertung zur echten Marge? (Achtung bei Hype-Preisen für langweilige 4-6% Margen-Geschäfte).
+               - Vorstands-Check: Gibt es 'Zukunfts-Märchen' (z.B. Hype-Programme für 2030 ohne heutige Umsätze), die den Kurs künstlich 2-3-fach aufgebläht haben?
+               - Gab es schwere Fehlkalkulationen, Verfehlungen der Ziele oder abrupte Massenentlassungen nach optimistischen Ankündigungen?
+
             Analysiere {name} ({ticker_input}):
             - Währung: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
-            - Verschuldung (Debt/Equity): {debt_to_equity}%
+            - Verschuldung (Debt/Equity): {de_actual}%
             - Marktkapitalisierung: {market_cap}
             - Score: {integrity_score}/100
             
@@ -261,7 +280,7 @@ if analyze_btn and ticker_input:
             Struktur:
             ## 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)
             ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
-            ## 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)
+            ## 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker-Blick & Klumpenrisiko-Check)
             ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
             ## 5. 36-Monats-Horizont & Gesamtprognose
             
@@ -269,7 +288,7 @@ if analyze_btn and ticker_input:
             ### FAZIT: [Sachliches Fazit]
             """
             
-            # 2. KI Abfrage (Cached)
+            # KI Abfrage (Cached)
             raw_text = generate_ki_analysis_cached(prompt)
             
             if "Geschliffener Brillant" in raw_text:
@@ -297,8 +316,8 @@ if analyze_btn and ticker_input:
                         st.markdown(part.replace("2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)", "").strip())
                 elif part.startswith("3. Burggraben"):
                     with st.container(border=True):
-                        st.markdown("### 🏰 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)")
-                        st.markdown(part.replace("3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)", "").strip())
+                        st.markdown("### 🏰 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)")
+                        st.markdown(part.replace("3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)", "").strip())
                 elif part.startswith("4. Bilanzen"):
                     with st.container(border=True):
                         st.markdown("### 🏛️ 4. Bilanzen, Schulden & Zyklen (Sander & Marks)")
