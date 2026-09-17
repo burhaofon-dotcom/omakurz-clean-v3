@@ -48,12 +48,12 @@ except Exception as e:
     st.stop()
 
 # --- MODELL-KANDIDATEN ---
-# WICHTIG: gemini-1.5-flash, gemini-1.5-flash-8b und gemini-1.5-pro wurden von Google
-# abgeschaltet (Stand 2026) und liefern nur noch "model not found". Aktuelle Nachfolger:
+# WICHTIG: gemini-1.5-* und gemini-2.5-* wurden von Google mittlerweile abgeschaltet
+# bzw. für neue Nutzer gesperrt. Aktueller Stand (Sept. 2026):
 MODEL_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-pro"
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview"
 ]
 
 # Hinweis: Kein globales, fest verdrahtetes 'model'-Objekt mehr nötig - der Fallback
