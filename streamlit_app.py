@@ -3,17 +3,16 @@ import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
 import plotly.graph_objects as go
-from datetime import datetime
 import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5.5",
+    page_title="Oma-Kurz-Kompass ULTRA v5.7",
     page_icon="🧭",
     layout="wide"
 )
 
-# --- EDLES DESIGN & ENDPUNKTE (CSS) ---
+# --- EDLES DESIGN (CSS) ---
 st.markdown("""
 <style>
     .main-header {
@@ -52,12 +51,12 @@ except Exception as e:
 model = genai.GenerativeModel(
     model_name="gemini-3.6-flash",
     generation_config={
-        "temperature": 0.3,
-        "max_output_tokens": 3200,
+        "temperature": 0.2,
+        "max_output_tokens": 2000,
     }
 )
 
-# --- SEITENLEISTE: GLOSSAR & PHILOSOPHIE ---
+# --- SEITENLEISTE ---
 with st.sidebar:
     st.title("🧭 Das Titanen-Quartett + 1")
     st.markdown("""
@@ -70,13 +69,13 @@ with st.sidebar:
     st.markdown("---")
     st.title("💡 Ticker-Wegweiser")
     st.markdown("""
-    * **🇺🇸 REITs & USA:** z.B. `MPW` (Medical Properties), `ALNY`
+    * **🇺🇸 USA / REITs:** z.B. `MPW`, `ALNY`
     * **🇩🇪 Deutschland:** `.DE` *(z.B. `GBF.DE`, `ALV.DE`)*
     * **🇯🇵 Japan:** `.T` *(z.B. `4901.T`)*
     * **🇬🇧 UK:** `.L` *(z.B. `RTO.L`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.5 (Robustes Scoring bei N/A & Kurs-Fallback)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.7 (Vollständige KI-Ausgabe & Stein-Fix)")
 
 # --- HEADER ---
 st.markdown("""
@@ -88,46 +87,62 @@ st.markdown("""
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. MPW, GBF.DE, ALNY, ALV.DE):", "MPW").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. MPW, GBF.DE, ALNY, ALV.DE):", "GBF.DE").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
-# --- 1. CACHED YFINANCE ABFRAGE (ROBUST INKL. KURS-FALLBACK) ---
-@st.cache_data(ttl=3600, show_spinner=False)
+# --- 1. ROBUSTE YFINANCE ABFRAGE (24H CACHE / KEINE DOPPEL-CALLS) ---
+@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
-    info = stock.info or {}
     
-    # Historie laden (dient zeitgleich als Fallback für fehlende Live-Kurse)
-    df_hist = stock.history(period="1y", auto_adjust=True)
+    info = {}
+    try:
+        info = stock.info or {}
+    except Exception:
+        pass
+        
+    fast_info = getattr(stock, 'fast_info', {})
     
-    current_p = info.get('currentPrice', info.get('regularMarketPrice', None))
-    if (current_p is None or current_p == 0.0) and not df_hist.empty:
-        # Falls YFinance keinen aktuellen Preis im Info-Dict hat, nehme den letzten Schlusskurs
+    # Historie nur 1x laden
+    df_hist = pd.DataFrame()
+    try:
+        df_hist = stock.history(period="1y", auto_adjust=True)
+    except Exception:
+        pass
+
+    # Robuster Kurs-Fallback
+    current_p = info.get('currentPrice') or info.get('regularMarketPrice')
+    if not current_p and hasattr(fast_info, 'last_price'):
+        current_p = fast_info.last_price
+    if (not current_p or current_p == 0.0) and not df_hist.empty:
         current_p = float(df_hist['Close'].iloc[-1])
-    elif current_p is None:
+    if not current_p:
         current_p = 0.0
+
+    # 52-Wochen Spanne Fallbacks
+    high_52 = info.get('fiftyTwoWeekHigh')
+    if (not high_52 or high_52 == 'N/A') and not df_hist.empty:
+        high_52 = float(df_hist['Close'].max())
+
+    low_52 = info.get('fiftyTwoWeekLow')
+    if (not low_52 or low_52 == 'N/A') and not df_hist.empty:
+        low_52 = float(df_hist['Close'].min())
 
     return {
         'longName': info.get('longName', ticker_symbol),
-        'currentPrice': current_p,
+        'currentPrice': float(current_p),
         'currency': info.get('currency', 'USD'),
         'trailingPE': info.get('trailingPE', None),
         'debtToEquity': info.get('debtToEquity', None),
         'payoutRatio': info.get('payoutRatio', None),
         'marketCap': info.get('marketCap', 0),
-        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+        'fiftyTwoWeekHigh': high_52 if high_52 else 'N/A',
+        'fiftyTwoWeekLow': low_52 if low_52 else 'N/A',
         'df_history': df_hist
     }
 
-# --- CACHED CHART RENDERER ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_chart_history_cached(ticker_symbol, period_choice):
-    stock = yf.Ticker(ticker_symbol)
-    return stock.history(period=period_choice, auto_adjust=True)
-
 # --- 2. CACHED KI-GENERIERUNG MIT RETRY ---
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
     max_retries = 3
     for attempt in range(max_retries):
@@ -171,19 +186,18 @@ if analyze_btn and ticker_input:
             fifty_two_high = info['fiftyTwoWeekHigh']
             fifty_two_low = info['fiftyTwoWeekLow']
             
-            # --- COMPASS INTEGRITY SCORE (ROBUSTE VERSION FÜR N/A & VERLUSTE) ---
+            # --- COMPASS INTEGRITY SCORE (ROBUSTE MATHEMATIK) ---
             base_score = 50
 
-            # 1. KGV / Verluste-Check
+            # 1. KGV / Verluste
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
                 if pe_ratio < 15: base_score += 15
                 elif pe_ratio < 30: base_score += 5
                 else: base_score -= 10
             else:
-                # Unternehmen macht Verlust oder KGV-Daten fehlen
                 base_score -= 15
 
-            # 2. Schulden-Bewertung (D/E Skalierungs-Fix + N/A Handling)
+            # 2. Schulden-Bewertung
             de_actual = None
             if isinstance(debt_to_equity, (int, float)):
                 de_actual = debt_to_equity / 100.0 if debt_to_equity > 500 else debt_to_equity
@@ -191,7 +205,6 @@ if analyze_btn and ticker_input:
                 elif de_actual > 150: base_score -= 25
                 elif de_actual > 100: base_score -= 10
             else:
-                # Unklare/fehlende Schuldenstruktur bei Sondersituationen abstrafen
                 base_score -= 10
 
             # 3. Marktkapitalisierung
@@ -205,11 +218,11 @@ if analyze_btn and ticker_input:
             if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
                 base_score += 10
 
-            # 5. Absturz- & Trend-Detektor (Malus bei Einbruch vom 52-Wochen-Hoch)
+            # 5. Absturz- & Trend-Detektor
             if isinstance(fifty_two_high, (int, float)) and fifty_two_high > 0 and isinstance(price, (int, float)) and price > 0:
                 drop_from_high = ((fifty_two_high - price) / fifty_two_high) * 100
                 if drop_from_high > 40:
-                    base_score -= 30  # Massiver Malus bei Kurssturz > 40%
+                    base_score -= 30
                 elif drop_from_high > 25:
                     base_score -= 15
 
@@ -238,8 +251,8 @@ if analyze_btn and ticker_input:
                 with col_t2:
                     st.markdown(f"**52-Wochen-Spanne:** {fifty_two_low} – {fifty_two_high} {currency}")
             
-            # --- INTERAKTIVER CHART ---
-            df_chart = fetch_chart_history_cached(ticker_input, "1y")
+            # --- INTERAKTIVER CHART (CACHED HISTORIE) ---
+            df_chart = info['df_history']
             if not df_chart.empty:
                 st.markdown(f"### 📈 Kursverlauf für **{name}**")
                 y_col = 'Close' if 'Close' in df_chart.columns else df_chart.columns[0]
@@ -267,93 +280,97 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- PROMPT: MULTI-SEKTOR DOMINO- & NARRATIV-RISIKEN ---
+            # --- STRUKTURIERTER PROMPT (KOMPAKT & AUF DEN PUNKT) ---
             prompt = f"""
-            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander, Ray Kurzweil, Charlie Munger, Howard Marks und Max Tegmark vereint.
+            Du bist der 'Oma-Kurz-Kompass ULTRA' (Analyst auf Titanen-Niveau: Sander, Kurzweil, Munger, Marks, Tegmark).
             
-            WICHTIGER SCHWERPUNKT (Multi-Sektor Domino- & Story-Detektor):
-            Prüfe das Unternehmen streng auf folgende branchenspezifische Kaskaden-Risiken und Vorstands-Narrative:
-            
-            1. REITs & Immobilien (Beispiel MPW):
-               - Gibt es ein extremes Klumpenrisiko durch einzelne Großmieter/Kunden?
-               - Besteht Gefahr einer Kettenreaktion, wenn der Hauptnutzer ins Straucheln gerät?
-               - Werden Dividenden aus Substanz oder Schulden gezahlt?
-            
-            2. Investmentbanken & Finanzen (Beispiel Lehman Brothers):
-               - Unübersichtliche Bilanzen, Derivate-Abwicklungen, Verbriefungsrisiken, hoher Leverage?
-               - Wie empfindlich reagiert das Haus auf Gegenpartei-Risiken (Counterparty Risk)?
-            
-            3. Dienstleistungs-, Industrie- & Bauunternehmen:
-               - Passt die Bewertung zur echten Marge? (Achtung bei Hype-Preisen für langweilige 4-6% Margen-Geschäfte).
-               - Vorstands-Check: Gibt es 'Zukunfts-Märchen' (z.B. Hype-Programme ohne heutige Umsätze), die den Kurs künstlich aufgebläht haben?
-               - Gab es schwere Fehlkalkulationen, Verfehlungen der Ziele oder abrupte Massenentlassungen nach optimistischen Ankündigungen?
-
             Analysiere {name} ({ticker_input}):
-            - Währung: {currency} (ca. {price_eur:.2f} EUR)
-            - KGV: {pe_ratio if pe_ratio else 'Verlust / Nicht verfügbar'}
-            - Verschuldung (Debt/Equity): {de_actual if de_actual else 'Unklar / Nicht verfügbar'}%
-            - Marktkapitalisierung: {market_cap}
+            - KGV: {pe_ratio if pe_ratio else 'Verlust/Keine Daten'}
+            - Schulden D/E: {de_actual if de_actual else 'Unklar'}%
             - Score: {integrity_score}/100
             
-            KEINE Anlageberatung!
+            VERZICHTE komplett auf allgemeine Firmen-Beschreibungen oder Einleitungen! Gehe sofort in die Tiefe.
             
-            Struktur:
-            ## 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)
-            ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
-            ## 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)
-            ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
-            ## 5. 36-Monats-Horizont & Gesamtprognose
+            Wichtigste Aufgabe:
+            - Klumpenrisiken, Gegenpartei-Risiken & Vorstands-Narrative/Fata-Morganas aufdecken.
+            - Passen Margen zum KGV? Gab es Zielverfehlungen oder abrupte Restrukturierungen?
             
-            ### STEIN-KLASSE: [Wähle exakt eines: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
-            ### FAZIT: [Sachliches Fazit]
+            Nutze exakt folgende Abschnitte:
+            SECTION_TRANSFORMATION: [Prüfung auf Zukunfts-Hype vs. reale Technologie]
+            SECTION_DOMINO: [Burggraben, Klumpenrisiko & Domino-Detektor]
+            SECTION_BILANZ: [Schulden, Zyklen & Zinsrisiko]
+            SECTION_PROGNOSE: [36-Monats-Ausblick]
+            STEIN_KLASSE: [Wähle exakt eine Option aus: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
+            FAZIT: [Kurzer, sachlicher Kernaussage-Satz]
             """
             
-            # KI Abfrage (Cached)
+            # KI Abfrage
             raw_text = generate_ki_analysis_cached(prompt)
             
-            if "Geschliffener Brillant" in raw_text:
-                st.success("💎 **Stein-Klasse: Geschliffener Brillant**")
-            elif "Solider Wert" in raw_text:
-                st.info("🛡️ **Stein-Klasse: Solider Wert**")
-            elif "Sich entwickelnder Stein" in raw_text:
-                st.info("🌱 **Stein-Klasse: Sich entwickelnder Stein**")
-            elif "Unpolierter Rohstein" in raw_text:
-                st.warning("🪨 **Stein-Klasse: Unpolierter Rohstein**")
-            elif "Dividenden-Falle" in raw_text:
-                st.error("⚠️ **Stein-Klasse: Dividenden-Falle**")
-                
+            # --- STEIN-KLASSE EXTRACTION & DISPLAY ---
+            stein_klasse = "Unbekannt"
+            if "STEIN_KLASSE:" in raw_text:
+                stein_line = [line for line in raw_text.split('\n') if "STEIN_KLASSE:" in line]
+                if stein_line:
+                    stein_klasse = stein_line[0].replace("STEIN_KLASSE:", "").strip()
+
+            if "Geschliffener Brillant" in stein_klasse:
+                st.success(f"💎 **Stein-Klasse: {stein_klasse}**")
+            elif "Solider Wert" in stein_klasse:
+                st.info(f"🛡️ **Stein-Klasse: {stein_klasse}**")
+            elif "Sich entwickelnder Stein" in stein_klasse:
+                st.info(f"🌱 **Stein-Klasse: {stein_klasse}**")
+            elif "Unpolierter Rohstein" in stein_klasse:
+                st.warning(f"🪨 **Stein-Klasse: {stein_klasse}**")
+            elif "Dividenden-Falle" in stein_klasse:
+                st.error(f"⚠️ **Stein-Klasse: {stein_klasse}**")
+            else:
+                st.warning(f"🏷️ **Stein-Klasse: {stein_klasse}**")
+
             st.markdown("---")
             
-            parts = raw_text.split("## ")
-            for part in parts:
-                if part.startswith("1. Sparten"):
-                    with st.container(border=True):
-                        st.markdown("### 🧩 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)")
-                        st.markdown(part.replace("1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)", "").strip())
-                elif part.startswith("2. Der Transformations"):
-                    with st.container(border=True):
-                        st.markdown("### 🚀 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)")
-                        st.markdown(part.replace("2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark)", "").strip())
-                elif part.startswith("3. Burggraben"):
-                    with st.container(border=True):
-                        st.markdown("### 🏰 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)")
-                        st.markdown(part.replace("3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)", "").strip())
-                elif part.startswith("4. Bilanzen"):
-                    with st.container(border=True):
-                        st.markdown("### 🏛️ 4. Bilanzen, Schulden & Zyklen (Sander & Marks)")
-                        st.markdown(part.replace("4. Bilanzen, Schulden & Zyklen (Sander & Marks)", "").strip())
-                elif part.startswith("5. 36-Monats"):
-                    with st.container(border=True):
-                        st.markdown("### ⏳ 5. 36-Monats-Horizont & Gesamtprognose")
-                        st.markdown(part.replace("5. 36-Monats-Horizont & Gesamtprognose", "").strip())
-            
-            if "FAZIT:" in raw_text:
-                fazit_text = raw_text.split("FAZIT:")[-1].strip()
+            # --- ANZEIGE DER SEKTIONEN ---
+            def parse_section(text, tag):
+                if tag in text:
+                    sub = text.split(tag)[1]
+                    for next_tag in ["SECTION_TRANSFORMATION:", "SECTION_DOMINO:", "SECTION_BILANZ:", "SECTION_PROGNOSE:", "STEIN_KLASSE:", "FAZIT:"]:
+                        if next_tag != tag and next_tag in sub:
+                            sub = sub.split(next_tag)[0]
+                    return sub.strip()
+                return ""
+
+            sec_trans = parse_section(raw_text, "SECTION_TRANSFORMATION:")
+            sec_domino = parse_section(raw_text, "SECTION_DOMINO:")
+            sec_bilanz = parse_section(raw_text, "SECTION_BILANZ:")
+            sec_prog = parse_section(raw_text, "SECTION_PROGNOSE:")
+            fazit_txt = parse_section(raw_text, "FAZIT:")
+
+            if sec_trans:
+                with st.container(border=True):
+                    st.markdown("### 🚀 1. Transformations- & Zukunfts-Faktor")
+                    st.markdown(sec_trans)
+
+            if sec_domino:
+                with st.container(border=True):
+                    st.markdown("### 🏰 2. Burggraben & Domino-Story-Detektor")
+                    st.markdown(sec_domino)
+
+            if sec_bilanz:
+                with st.container(border=True):
+                    st.markdown("### 🏛️ 3. Bilanzen, Schulden & Zyklen")
+                    st.markdown(sec_bilanz)
+
+            if sec_prog:
+                with st.container(border=True):
+                    st.markdown("### ⏳ 4. 36-Monats-Horizont & Prognose")
+                    st.markdown(sec_prog)
+
+            if fazit_txt:
                 st.markdown("---")
-                st.info(f"💡 **FAZIT:** {fazit_text}")
-                
+                st.info(f"💡 **FAZIT:** {fazit_txt}")
+
         except Exception as e:
             if "429" in str(e):
-                st.warning("⏳ API-Pause: Sowohl YFinance als auch Gemini bitten um eine kurze Pause. Warte 20-30 Sekunden.")
+                st.warning("⏳ API-Pause: Bitte 20 Sekunden warten.")
             else:
                 st.error(f"Fehler: {str(e)}")
