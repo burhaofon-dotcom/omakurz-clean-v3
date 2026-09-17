@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
+import plotly.graph_objects as go
 from datetime import datetime
 import time
 
@@ -94,7 +95,11 @@ with col_search:
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
-    info = stock.info
+    info = stock.info or {}
+    
+    # Historie mit auto_adjust=True für split-bereinigte Kurse
+    df_fast = stock.history(period="1y", auto_adjust=True)
+    
     return {
         'longName': info.get('longName', ticker_symbol),
         'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0.0)),
@@ -104,8 +109,16 @@ def fetch_stock_data_cached(ticker_symbol):
         'payoutRatio': info.get('payoutRatio', 0.0),
         'marketCap': info.get('marketCap', 0),
         'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+        'df_history': df_fast
     }
+
+# --- CACHED CHART RENDERER MIT AUTO_ADJUST (SPLIT-KORREKTUR) ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_chart_history_cached(ticker_symbol, period_choice):
+    stock = yf.Ticker(ticker_symbol)
+    # auto_adjust=True glättet Aktiensplits sauber heraus
+    return stock.history(period=period_choice, auto_adjust=True)
 
 # --- 2. JIMMY-FUNKTION: CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -139,7 +152,7 @@ if analyze_btn and ticker_input:
             if currency != 'EUR' and isinstance(price, (int, float)):
                 try:
                     fx_ticker = yf.Ticker(f"{currency}EUR=X")
-                    fx_info = fx_ticker.info
+                    fx_info = fx_ticker.info or {}
                     fx_rate = fx_info.get('currentPrice', fx_info.get('regularMarketPrice', None))
                     if fx_rate:
                         price_eur = price * fx_rate
@@ -199,6 +212,33 @@ if analyze_btn and ticker_input:
                     st.markdown(f"**Marktkapitalisierung:** {market_cap:,} {currency}" if isinstance(market_cap, (int, float)) else f"**Marktkapitalisierung:** {market_cap}")
                 with col_t2:
                     st.markdown(f"**52-Wochen-Spanne:** {fifty_two_low} – {fifty_two_high} {currency}")
+            
+            # --- INTERAKTIVER CHART MIT SPLIT-KORREKTUR ---
+            df_chart = fetch_chart_history_cached(ticker_input, "1y")
+            if not df_chart.empty:
+                st.markdown(f"### 📈 Kursverlauf für **{name}**")
+                y_col = 'Close' if 'Close' in df_chart.columns else df_chart.columns[0]
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=df_chart.index,
+                    y=df_chart[y_col],
+                    mode='lines',
+                    name='Schlusskurs',
+                    line=dict(color='#d4af37', width=2),
+                    hovertemplate='%{x|%d.%m.%Y}: <b>%{y:.2f}</b>'
+                ))
+                fig.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(20,20,20,0.6)",
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    height=350,
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="#333333", title=f"Kurs ({currency})"),
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("---")
             
