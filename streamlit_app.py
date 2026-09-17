@@ -105,12 +105,13 @@ def fetch_fx_rate_cached(currency):
     fallback_rates = {'JPY': 0.0062, 'USD': 0.92, 'GBP': 1.18}
     return fallback_rates.get(currency, 1.0)
 
-# --- CACHED YFINANCE ABFRAGE ---
+# --- CACHED YFINANCE ABFRAGE MIT AUTO-ADJUST ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     
-    df_fast = stock.history(period="1y")
+    # auto_adjust=True bereinigt historische Splits & Ausschüttungen sauber
+    df_fast = stock.history(period="1y", auto_adjust=True)
     latest_price = 0.0
     if not df_fast.empty:
         latest_price = float(df_fast['Close'].iloc[-1])
@@ -149,7 +150,12 @@ def fetch_stock_data_cached(ticker_symbol):
         'df_history': df_fast
     }
 
-# --- INTERAKTIVER CHART RENDERER ---
+# --- CACHED CHART RENDERER MIT SPLIT-KORREKTUR ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_chart_history_cached(ticker_symbol, period_choice):
+    stock = yf.Ticker(ticker_symbol)
+    return stock.history(period=period_choice, auto_adjust=True)
+
 def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
     st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
     
@@ -164,8 +170,7 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
     if period_choice == "1y" and not df_prefetched.empty:
         df = df_prefetched
     else:
-        stock = yf.Ticker(ticker_symbol)
-        df = stock.history(period=period_choice)
+        df = fetch_chart_history_cached(ticker_symbol, period_choice)
     
     if not df.empty:
         fig = go.Figure()
