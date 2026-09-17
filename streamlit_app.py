@@ -7,7 +7,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5.1",
+    page_title="Oma-Kurz-Kompass ULTRA v5.2",
     page_icon="🧭",
     layout="wide"
 )
@@ -75,30 +75,49 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.1 (Optimiert mit Jimmy-Caching & Retry)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.2 (Jimmy-Upgrade: Session-State & FX-Caching)")
 
 # --- HEADER ---
 st.markdown("""
 <div class="main-header">
-    <h1>🧭 OMA-KURZ-KOMPASS ULTRA</h1>
+    <h1>🧭 OMA-KURZ-KOMPASS ULTRA v5.2</h1>
     <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Theranos-Nikola-Detektor“</p>
 </div>
 """, unsafe_allow_html=True)
 
-col_search, col_space = st.columns([2, 1])
-with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "4901.T").upper()
-    analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
+# --- CACHED WECHSELKURS ABFRAGE ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_fx_rate_cached(currency):
+    if currency == 'EUR':
+        return 1.0
+    try:
+        fx_ticker = yf.Ticker(f"{currency}EUR=X")
+        fx_info = fx_ticker.info
+        return fx_info.get('currentPrice', fx_info.get('regularMarketPrice', 1.0))
+    except Exception:
+        return 1.0
 
-# --- 1. JIMMY-FUNKTION: CACHED YFINANCE ABFRAGE (1 STUNDE TTL) ---
+# --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     info = stock.info
+    
+    currency = info.get('currency', 'USD')
+    price = info.get('currentPrice', info.get('regularMarketPrice', 0.0))
+    
+    if currency == 'GBp':
+        price = price / 100.0
+        currency = 'GBP'
+        
+    fx_rate = fetch_fx_rate_cached(currency)
+    price_eur = price * fx_rate if isinstance(price, (int, float)) else price
+
     return {
         'longName': info.get('longName', ticker_symbol),
-        'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0.0)),
-        'currency': info.get('currency', 'USD'),
+        'currentPrice': price,
+        'currency': currency,
+        'price_eur': price_eur,
         'trailingPE': info.get('trailingPE', None),
         'debtToEquity': info.get('debtToEquity', None),
         'payoutRatio': info.get('payoutRatio', 0.0),
@@ -107,7 +126,7 @@ def fetch_stock_data_cached(ticker_symbol):
         'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
     }
 
-# --- 2. JIMMY-FUNKTION: CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
+# --- CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
     max_retries = 3
@@ -121,31 +140,29 @@ def generate_ki_analysis_cached(prompt_text):
             else:
                 raise api_err
 
+# --- EINGABE & SESSION STATE HANDLING ---
+col_search, col_space = st.columns([2, 1])
+with col_search:
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "4901.T").upper()
+    analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
+
+# Wenn der Button gedrückt wird, speichern wir den aktiven Ticker im Session State
 if analyze_btn and ticker_input:
-    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input}..."):
+    st.session_state["active_ticker"] = ticker_input
+
+# Analyse ausführen, falls ein Ticker im Session State vorhanden ist
+if "active_ticker" in st.session_state:
+    current_ticker = st.session_state["active_ticker"]
+    
+    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {current_ticker}..."):
         try:
-            # 1. Daten holen (Cached)
-            info = fetch_stock_data_cached(ticker_input)
+            # 1. Daten holen (Cached inklusive FX)
+            info = fetch_stock_data_cached(current_ticker)
             
             name = info['longName']
             price = info['currentPrice']
             currency = info['currency']
-            
-            if currency == 'GBp':
-                price = price / 100.0
-                currency = 'GBP'
-            
-            price_eur = price
-            if currency != 'EUR' and isinstance(price, (int, float)):
-                try:
-                    fx_ticker = yf.Ticker(f"{currency}EUR=X")
-                    fx_info = fx_ticker.info
-                    fx_rate = fx_info.get('currentPrice', fx_info.get('regularMarketPrice', None))
-                    if fx_rate:
-                        price_eur = price * fx_rate
-                except Exception:
-                    pass
-            
+            price_eur = info['price_eur']
             pe_ratio = info['trailingPE']
             debt_to_equity = info['debtToEquity']
             payout_ratio = info['payoutRatio']
@@ -178,7 +195,7 @@ if analyze_btn and ticker_input:
             integrity_score = max(15, min(100, base_score))
             
             # --- UI METRIKEN ---
-            st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
+            st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{current_ticker}`)")
             
             col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
             if currency == 'EUR':
@@ -209,7 +226,7 @@ if analyze_btn and ticker_input:
             WICHTIGER SCHWERPUNKT (Theranos-Nikola-Detektor): 
             Prüfe kritisch auf echte Validierung vs. Marketing-Hype.
             
-            Analysiere {name} ({ticker_input}):
+            Analysiere {name} ({current_ticker}):
             - Währung: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
