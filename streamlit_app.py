@@ -98,14 +98,27 @@ def fetch_fx_rate_cached(currency):
     except Exception:
         return 1.0
 
-# --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS ---
+# --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS & FALLBACK ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
-    info = stock.info
     
-    currency = info.get('currency', 'USD')
-    price = info.get('currentPrice', info.get('regularMarketPrice', 0.0))
+    # 1. Versuche Kurs aus history zu ziehen (viel zuverlässiger gegen Rate-Limits)
+    df_fast = stock.history(period="5d")
+    latest_price = 0.0
+    if not df_fast.empty:
+        latest_price = float(df_fast['Close'].iloc[-1])
+
+    info = {}
+    try:
+        info = stock.info or {}
+    except Exception:
+        info = {}
+    
+    currency = info.get('currency', 'JPY' if ticker_symbol.endswith('.T') else 'USD')
+    price = info.get('currentPrice', info.get('regularMarketPrice', latest_price))
+    if price == 0.0 or price is None:
+        price = latest_price
     
     if currency == 'GBp':
         price = price / 100.0
