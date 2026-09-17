@@ -47,14 +47,34 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
-# --- MODELL INITIALISIERUNG (FIX FÜR DIE API) ---
-model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
-    generation_config={
-        "temperature": 0.2,
-        "max_output_tokens": 2000,
-    }
-)
+# --- MODELL INITIALISIERUNG MIT AUTOMATISCHEM FALLBACK ---
+# Liste von Modellen nach Priorität
+MODEL_CANDIDATES = [
+    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash"
+]
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def generate_ki_analysis_cached(prompt_text):
+    last_exception = None
+    for model_name in MODEL_CANDIDATES:
+        try:
+            temp_model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config={
+                    "temperature": 0.2,
+                    "max_output_tokens": 2000,
+                }
+            )
+            response = temp_model.generate_content(prompt_text)
+            return response.text
+        except Exception as err:
+            last_exception = err
+            # Falls Modell nicht gefunden wird (404), probiere das nächste in der Liste
+            continue
+            
+    raise last_exception
 
 # --- SEITENLEISTE ---
 with st.sidebar:
