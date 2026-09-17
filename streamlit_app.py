@@ -2,6 +2,28 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 
+# Page Configuration
+st.set_page_config(
+    page_title="Aktien-Analyse & Chart",
+    page_icon="📈",
+    layout="wide"
+)
+
+# --- CACHED WÄHRUNGSKURS ABFRAGE ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_fx_rate_cached(currency):
+    if currency == 'EUR' or not currency:
+        return 1.0
+    try:
+        fx_ticker = f"{currency}EUR=X"
+        fx_data = yf.Ticker(fx_ticker)
+        hist = fx_data.history(period="1d")
+        if not hist.empty:
+            return float(hist['Close'].iloc[-1])
+        return 1.0
+    except Exception:
+        return 1.0
+
 # --- CACHED YFINANCE ABFRAGE MIT AUTO-ADJUST & ROBUSTEM FAST_INFO FALLBACK ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
@@ -11,7 +33,6 @@ def fetch_stock_data_cached(ticker_symbol):
     df_fast = stock.history(period="1y", auto_adjust=True)
     latest_price = 0.0
     if not df_fast.empty:
-        # Dynamisch die richtige Kursspalte ermitteln ('Close' oder Fallback auf die erste Spalte)
         close_col = 'Close' if 'Close' in df_fast.columns else df_fast.columns[0]
         latest_price = float(df_fast[close_col].iloc[-1])
 
@@ -79,7 +100,6 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
         df = fetch_chart_history_cached(ticker_symbol, period_choice)
     
     if not df.empty:
-        # Dynamisch die richtige Kursspalte ermitteln (Close vs. Adj Close)
         y_col = 'Close' if 'Close' in df.columns else df.columns[0]
         
         fig = go.Figure()
@@ -105,3 +125,42 @@ def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Keine historischen Kursdaten verfügbar.")
+
+# --- MAIN STREAMLIT APPLICATION ---
+def main():
+    st.title("📊 Aktien-Analyse Dashboard")
+    
+    # Sidebar Eingabe
+    st.sidebar.header("Einstellungen")
+    ticker_input = st.sidebar.text_input("Ticker-Symbol eingeben (z.B. FTNT, AAPL, MSFT):", value="FTNT").upper().strip()
+    
+    if ticker_input:
+        with st.spinner(f"Lade Daten für {ticker_input}..."):
+            data = fetch_stock_data_cached(ticker_input)
+            
+        if data and data.get('currentPrice'):
+            st.header(f"{data['longName']} ({ticker_input})")
+            
+            # Kennzahlen im Überblick
+            col1, col2, col3, col4 = st.columns(4)
+            
+            col1.metric("Aktueller Kurs", f"{data['currentPrice']:.2f} {data['currency']}")
+            col2.metric("Kurs in EUR", f"{data['price_eur']:.2f} €" if isinstance(data['price_eur'], (int, float)) else "N/A")
+            
+            pe_val = f"{data['trailingPE']:.2f}" if data.get('trailingPE') else "N/A"
+            col3.metric("KGV (P/E)", pe_val)
+            
+            mcap = data.get('marketCap', 0)
+            mcap_str = f"{mcap / 1e9:.2f} Mrd." if mcap else "N/A"
+            col4.metric("Marktkapitalisierung", mcap_str)
+            
+            st.divider()
+            
+            # Chart anzeigen
+            render_interactive_chart(ticker_input, data['longName'], data['df_history'])
+            
+        else:
+            st.error(f"Für das Ticker-Symbol '{ticker_input}' konnten keine Daten geladen werden. Bitte überprüfe die Eingabe.")
+
+if __name__ == "__main__":
+    main()
