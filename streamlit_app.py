@@ -2,12 +2,13 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
+import plotly.graph_objects as go
 from datetime import datetime
 import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5.2",
+    page_title="Oma-Kurz-Kompass ULTRA v5.3",
     page_icon="🧭",
     layout="wide"
 )
@@ -75,12 +76,12 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.2 (Jimmy-Upgrade: Session-State & FX-Caching)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.3 (Inkl. Plotly-Chart)")
 
 # --- HEADER ---
 st.markdown("""
 <div class="main-header">
-    <h1>🧭 OMA-KURZ-KOMPASS ULTRA v5.2</h1>
+    <h1>🧭 OMA-KURZ-KOMPASS ULTRA v5.3</h1>
     <p>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Theranos-Nikola-Detektor“</p>
 </div>
 """, unsafe_allow_html=True)
@@ -126,6 +127,50 @@ def fetch_stock_data_cached(ticker_symbol):
         'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
     }
 
+# --- CACHED KURS-HISTORIE (PLOTLY CHART) ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_stock_history_cached(ticker_symbol, period="1y"):
+    stock = yf.Ticker(ticker_symbol)
+    return stock.history(period=period)
+
+def render_interactive_chart(ticker_symbol, company_name):
+    st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
+    
+    period_choice = st.radio(
+        "Zeitraum wählen:",
+        ["6m", "1y", "3y", "5y"],
+        index=1,
+        horizontal=True,
+        key=f"chart_period_{ticker_symbol}"
+    )
+    
+    df = fetch_stock_history_cached(ticker_symbol, period=period_choice)
+    
+    if not df.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            mode='lines',
+            name='Schlusskurs',
+            line=dict(color='#d4af37', width=2),
+            hovertemplate='%{x|%d.%m.%Y}: <b>%{y:.2f}</b>'
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(20,20,20,0.6)",
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=350,
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor="#333333", title="Kurs"),
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Keine historischen Kursdaten verfügbar.")
+
 # --- CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
@@ -136,27 +181,24 @@ def generate_ki_analysis_cached(prompt_text):
             return response.text
         except Exception as api_err:
             if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(10 + (attempt * 10))  # Wartet 10s, dann 20s...
+                time.sleep(10 + (attempt * 10))
             else:
                 raise api_err
 
 # --- EINGABE & SESSION STATE HANDLING ---
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "4901.T").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T, 6501.T):", "6501.T").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
-# Wenn der Button gedrückt wird, speichern wir den aktiven Ticker im Session State
 if analyze_btn and ticker_input:
     st.session_state["active_ticker"] = ticker_input
 
-# Analyse ausführen, falls ein Ticker im Session State vorhanden ist
 if "active_ticker" in st.session_state:
     current_ticker = st.session_state["active_ticker"]
     
     with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {current_ticker}..."):
         try:
-            # 1. Daten holen (Cached inklusive FX)
             info = fetch_stock_data_cached(current_ticker)
             
             name = info['longName']
@@ -210,6 +252,9 @@ if "active_ticker" in st.session_state:
             
             st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte")
 
+            # --- INTERAKTIVER CHART ---
+            render_interactive_chart(current_ticker, name)
+
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
@@ -246,7 +291,6 @@ if "active_ticker" in st.session_state:
             ### FAZIT: [Sachliches Fazit]
             """
             
-            # 2. KI Abfrage (Cached)
             raw_text = generate_ki_analysis_cached(prompt)
             
             if "Geschliffener Brillant" in raw_text:
