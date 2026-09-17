@@ -1,9 +1,9 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
 import plotly.graph_objects as go
-from datetime import datetime
 import time
 
 # --- SEITENKONFIGURATION ---
@@ -76,7 +76,7 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.3 (Inkl. Plotly-Chart)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.3")
 
 # --- HEADER ---
 st.markdown("""
@@ -86,25 +86,34 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- CACHED WECHSELKURS ABFRAGE ---
+# --- CACHED WECHSELKURS ABFRAGE (MIT HARTE FALLBACKS) ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_fx_rate_cached(currency):
-    if currency == 'EUR':
+    if currency in ['EUR', 'EU']:
         return 1.0
     try:
         fx_ticker = yf.Ticker(f"{currency}EUR=X")
+        df_fx = fx_ticker.history(period="5d")
+        if not df_fx.empty:
+            return float(df_fx['Close'].iloc[-1])
         fx_info = fx_ticker.info
-        return fx_info.get('currentPrice', fx_info.get('regularMarketPrice', 1.0))
+        rate = fx_info.get('currentPrice', fx_info.get('regularMarketPrice', None))
+        if rate:
+            return float(rate)
     except Exception:
-        return 1.0
+        pass
+    
+    # Harte Notfall-Kurse (falls Yahoo FX blockiert)
+    fallback_rates = {'JPY': 0.0062, 'USD': 0.92, 'GBP': 1.18}
+    return fallback_rates.get(currency, 1.0)
 
 # --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS & FALLBACK ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     
-    # 1. Versuche Kurs aus history zu ziehen (viel zuverlässiger gegen Rate-Limits)
-    df_fast = stock.history(period="5d")
+    # 1. Kurs aus History holen
+    df_fast = stock.history(period="1y")
     latest_price = 0.0
     if not df_fast.empty:
         latest_price = float(df_fast['Close'].iloc[-1])
@@ -137,16 +146,11 @@ def fetch_stock_data_cached(ticker_symbol):
         'payoutRatio': info.get('payoutRatio', 0.0),
         'marketCap': info.get('marketCap', 0),
         'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+        'df_history': df_fast
     }
 
-# --- CACHED KURS-HISTORIE (PLOTLY CHART) ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_stock_history_cached(ticker_symbol, period="1y"):
-    stock = yf.Ticker(ticker_symbol)
-    return stock.history(period=period)
-
-def render_interactive_chart(ticker_symbol, company_name):
+def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
     st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
     
     period_choice = st.radio(
@@ -157,7 +161,11 @@ def render_interactive_chart(ticker_symbol, company_name):
         key=f"chart_period_{ticker_symbol}"
     )
     
-    df = fetch_stock_history_cached(ticker_symbol, period=period_choice)
+    if period_choice == "1y" and not df_prefetched.empty:
+        df = df_prefetched
+    else:
+        stock = yf.Ticker(ticker_symbol)
+        df = stock.history(period=period_choice)
     
     if not df.empty:
         fig = go.Figure()
@@ -224,6 +232,7 @@ if "active_ticker" in st.session_state:
             market_cap = info['marketCap']
             fifty_two_high = info['fiftyTwoWeekHigh']
             fifty_two_low = info['fiftyTwoWeekLow']
+            df_history = info['df_history']
             
             # --- COMPASS INTEGRITY SCORE ---
             base_score = 50
@@ -234,13 +243,9 @@ if "active_ticker" in st.session_state:
             
             if isinstance(debt_to_equity, (int, float)):
                 if debt_to_equity < 50: base_score += 15
-                elif debt_to_equity > 150:
-                    if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000:
-                        base_score -= 5
-                    else:
-                        base_score -= 25
+                elif debt_to_equity > 150: base_score -= 15
             
-            if isinstance(market_cap, (int, float)):
+            if isinstance(market_cap, (int, float)) and market_cap > 0:
                 if market_cap > 10_000_000_000: base_score += 20
                 elif market_cap > 2_000_000_000: base_score += 10
             
@@ -266,12 +271,12 @@ if "active_ticker" in st.session_state:
             st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte")
 
             # --- INTERAKTIVER CHART ---
-            render_interactive_chart(current_ticker, name)
+            render_interactive_chart(current_ticker, name, df_history)
 
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
-                    st.markdown(f"**Marktkapitalisierung:** {market_cap:,} {currency}" if isinstance(market_cap, (int, float)) else f"**Marktkapitalisierung:** {market_cap}")
+                    st.markdown(f"**Marktkapitalisierung:** {market_cap:,} {currency}" if isinstance(market_cap, (int, float)) and market_cap > 0 else f"**Marktkapitalisierung:** N/A")
                 with col_t2:
                     st.markdown(f"**52-Wochen-Spanne:** {fifty_two_low} – {fifty_two_high} {currency}")
 
