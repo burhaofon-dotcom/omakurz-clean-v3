@@ -8,7 +8,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5.4",
+    page_title="Oma-Kurz-Kompass ULTRA v5.5",
     page_icon="🧭",
     layout="wide"
 )
@@ -76,7 +76,7 @@ with st.sidebar:
     * **🇬🇧 UK:** `.L` *(z.B. `RTO.L`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5.4 (Inkl. Multi-Sektor Domino- & Narrative-Detektor)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.5 (Robustes Scoring bei N/A & Kurs-Fallback)")
 
 # --- HEADER ---
 st.markdown("""
@@ -91,21 +91,33 @@ with col_search:
     ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. MPW, GBF.DE, ALNY, ALV.DE):", "MPW").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
-# --- 1. CACHED YFINANCE ABFRAGE ---
+# --- 1. CACHED YFINANCE ABFRAGE (ROBUST INKL. KURS-FALLBACK) ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     info = stock.info or {}
+    
+    # Historie laden (dient zeitgleich als Fallback für fehlende Live-Kurse)
+    df_hist = stock.history(period="1y", auto_adjust=True)
+    
+    current_p = info.get('currentPrice', info.get('regularMarketPrice', None))
+    if (current_p is None or current_p == 0.0) and not df_hist.empty:
+        # Falls YFinance keinen aktuellen Preis im Info-Dict hat, nehme den letzten Schlusskurs
+        current_p = float(df_hist['Close'].iloc[-1])
+    elif current_p is None:
+        current_p = 0.0
+
     return {
         'longName': info.get('longName', ticker_symbol),
-        'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0.0)),
+        'currentPrice': current_p,
         'currency': info.get('currency', 'USD'),
         'trailingPE': info.get('trailingPE', None),
         'debtToEquity': info.get('debtToEquity', None),
-        'payoutRatio': info.get('payoutRatio', 0.0),
+        'payoutRatio': info.get('payoutRatio', None),
         'marketCap': info.get('marketCap', 0),
         'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+        'df_history': df_hist
     }
 
 # --- CACHED CHART RENDERER ---
@@ -142,7 +154,7 @@ if analyze_btn and ticker_input:
                 currency = 'GBP'
             
             price_eur = price
-            if currency != 'EUR' and isinstance(price, (int, float)):
+            if currency != 'EUR' and isinstance(price, (int, float)) and price > 0:
                 try:
                     fx_ticker = yf.Ticker(f"{currency}EUR=X")
                     fx_info = fx_ticker.info or {}
@@ -159,34 +171,42 @@ if analyze_btn and ticker_input:
             fifty_two_high = info['fiftyTwoWeekHigh']
             fifty_two_low = info['fiftyTwoWeekLow']
             
-            # --- COMPASS INTEGRITY SCORE ---
+            # --- COMPASS INTEGRITY SCORE (ROBUSTE VERSION FÜR N/A & VERLUSTE) ---
             base_score = 50
 
-            # 1. KGV-Bewertung
+            # 1. KGV / Verluste-Check
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
                 if pe_ratio < 15: base_score += 15
                 elif pe_ratio < 30: base_score += 5
                 else: base_score -= 10
+            else:
+                # Unternehmen macht Verlust oder KGV-Daten fehlen
+                base_score -= 15
 
-            # 2. Schulden-Bewertung (D/E Skalierungs-Fix)
+            # 2. Schulden-Bewertung (D/E Skalierungs-Fix + N/A Handling)
             de_actual = None
             if isinstance(debt_to_equity, (int, float)):
                 de_actual = debt_to_equity / 100.0 if debt_to_equity > 500 else debt_to_equity
                 if de_actual < 50: base_score += 15
                 elif de_actual > 150: base_score -= 25
                 elif de_actual > 100: base_score -= 10
+            else:
+                # Unklare/fehlende Schuldenstruktur bei Sondersituationen abstrafen
+                base_score -= 10
 
             # 3. Marktkapitalisierung
-            if isinstance(market_cap, (int, float)):
+            if isinstance(market_cap, (int, float)) and market_cap > 0:
                 if market_cap > 10_000_000_000: base_score += 15
                 elif market_cap > 2_000_000_000: base_score += 5
+            else:
+                base_score -= 5
 
             # 4. Ausschüttungsquote
             if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
                 base_score += 10
 
             # 5. Absturz- & Trend-Detektor (Malus bei Einbruch vom 52-Wochen-Hoch)
-            if isinstance(fifty_two_high, (int, float)) and fifty_two_high > 0 and isinstance(price, (int, float)):
+            if isinstance(fifty_two_high, (int, float)) and fifty_two_high > 0 and isinstance(price, (int, float)) and price > 0:
                 drop_from_high = ((fifty_two_high - price) / fifty_two_high) * 100
                 if drop_from_high > 40:
                     base_score -= 30  # Massiver Malus bei Kurssturz > 40%
@@ -204,7 +224,7 @@ if analyze_btn and ticker_input:
             else:
                 col_m1.metric("Kurs", f"{price:.2f} {currency}", f"≈ {price_eur:.2f} EUR")
                 
-            col_m2.metric("KGV", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A")
+            col_m2.metric("KGV", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else "N/A (Verlust)")
             col_m3.metric("Schulden (D/E)", f"{de_actual:.1f}%" if isinstance(de_actual, (int, float)) else "N/A")
             col_m4.metric("Ausschüttung", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) and payout_ratio else "N/A")
             col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
@@ -247,7 +267,7 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- PROMPT: GESCHÄRFT FÜR MULTI-SEKTOR DOMINO- & NARRATIV-RISIKEN ---
+            # --- PROMPT: MULTI-SEKTOR DOMINO- & NARRATIV-RISIKEN ---
             prompt = f"""
             Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander, Ray Kurzweil, Charlie Munger, Howard Marks und Max Tegmark vereint.
             
@@ -265,13 +285,13 @@ if analyze_btn and ticker_input:
             
             3. Dienstleistungs-, Industrie- & Bauunternehmen:
                - Passt die Bewertung zur echten Marge? (Achtung bei Hype-Preisen für langweilige 4-6% Margen-Geschäfte).
-               - Vorstands-Check: Gibt es 'Zukunfts-Märchen' (z.B. Hype-Programme für 2030 ohne heutige Umsätze), die den Kurs künstlich 2-3-fach aufgebläht haben?
+               - Vorstands-Check: Gibt es 'Zukunfts-Märchen' (z.B. Hype-Programme ohne heutige Umsätze), die den Kurs künstlich aufgebläht haben?
                - Gab es schwere Fehlkalkulationen, Verfehlungen der Ziele oder abrupte Massenentlassungen nach optimistischen Ankündigungen?
 
             Analysiere {name} ({ticker_input}):
             - Währung: {currency} (ca. {price_eur:.2f} EUR)
-            - KGV: {pe_ratio}
-            - Verschuldung (Debt/Equity): {de_actual}%
+            - KGV: {pe_ratio if pe_ratio else 'Verlust / Nicht verfügbar'}
+            - Verschuldung (Debt/Equity): {de_actual if de_actual else 'Unklar / Nicht verfügbar'}%
             - Marktkapitalisierung: {market_cap}
             - Score: {integrity_score}/100
             
@@ -280,7 +300,7 @@ if analyze_btn and ticker_input:
             Struktur:
             ## 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)
             ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
-            ## 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker-Blick & Klumpenrisiko-Check)
+            ## 3. Burggraben & Domino-Story-Detektor (Munger-Skeptiker & Klumpenrisiken)
             ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
             ## 5. 36-Monats-Horizont & Gesamtprognose
             
