@@ -7,7 +7,7 @@ import time
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Oma-Kurz-Kompass ULTRA v5",
+    page_title="Oma-Kurz-Kompass ULTRA v5.1",
     page_icon="🧭",
     layout="wide"
 )
@@ -44,7 +44,7 @@ try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 except Exception as e:
-    st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden! Bitte hinterlege GEMINI_API_KEY in den Secrets.")
+    st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
 # --- MODELL INITIALISIERUNG ---
@@ -75,7 +75,7 @@ with st.sidebar:
     * **🇩🇪 Deutschland:** `.DE` *(z.B. Allianz: `ALV.DE`)*
     """)
     st.markdown("---")
-    st.caption("Oma-Kurz-Kompass ULTRA v5 (mit Anti-Rate-Limit Caching)")
+    st.caption("Oma-Kurz-Kompass ULTRA v5.1 (Optimiert mit Jimmy-Caching & Retry)")
 
 # --- HEADER ---
 st.markdown("""
@@ -87,12 +87,29 @@ st.markdown("""
 
 col_search, col_space = st.columns([2, 1])
 with col_search:
-    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "ALV.DE").upper()
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. ALNY, ALV.DE, 4901.T):", "4901.T").upper()
     analyze_btn = st.button("🚀 Kurs aufnehmen & Tiefenanalyse starten", use_container_width=True, type="primary")
 
-# --- CACHED KI-ABFRAGE MIT INTELLIGENTEM RETRY-PUFFER ---
+# --- 1. JIMMY-FUNKTION: CACHED YFINANCE ABFRAGE (1 STUNDE TTL) ---
 @st.cache_data(ttl=3600, show_spinner=False)
-def cached_generation(prompt_text):
+def fetch_stock_data_cached(ticker_symbol):
+    stock = yf.Ticker(ticker_symbol)
+    info = stock.info
+    return {
+        'longName': info.get('longName', ticker_symbol),
+        'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0.0)),
+        'currency': info.get('currency', 'USD'),
+        'trailingPE': info.get('trailingPE', None),
+        'debtToEquity': info.get('debtToEquity', None),
+        'payoutRatio': info.get('payoutRatio', 0.0),
+        'marketCap': info.get('marketCap', 0),
+        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
+    }
+
+# --- 2. JIMMY-FUNKTION: CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def generate_ki_analysis_cached(prompt_text):
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -100,86 +117,67 @@ def cached_generation(prompt_text):
             return response.text
         except Exception as api_err:
             if "429" in str(api_err) and attempt < max_retries - 1:
-                time.sleep(12 + (attempt * 10))
+                time.sleep(10 + (attempt * 10))  # Wartet 10s, dann 20s...
             else:
                 raise api_err
 
 if analyze_btn and ticker_input:
-    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input} durch die Brille der Titanen..."):
+    with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {ticker_input}..."):
         try:
-            stock = yf.Ticker(ticker_input)
-            info = stock.info
+            # 1. Daten holen (Cached)
+            info = fetch_stock_data_cached(ticker_input)
             
-            name = info.get('longName', ticker_input)
-            price = info.get('currentPrice', info.get('regularMarketPrice', 0.0))
-            currency = info.get('currency', 'USD')
+            name = info['longName']
+            price = info['currentPrice']
+            currency = info['currency']
             
-            # --- WÄHRUNGS- & PENCE-KORREKTUR ---
             if currency == 'GBp':
                 price = price / 100.0
                 currency = 'GBP'
             
-            # --- AUTOMATISCHE WECHSELKURS-UMRECHNUNG IN EURO ---
             price_eur = price
             if currency != 'EUR' and isinstance(price, (int, float)):
                 try:
                     fx_ticker = yf.Ticker(f"{currency}EUR=X")
                     fx_info = fx_ticker.info
                     fx_rate = fx_info.get('currentPrice', fx_info.get('regularMarketPrice', None))
-                    if not fx_rate:
-                        fx_hist = fx_ticker.history(period="1d")
-                        if not fx_hist.empty:
-                            fx_rate = fx_hist['Close'].iloc[-1]
                     if fx_rate:
                         price_eur = price * fx_rate
                 except Exception:
                     pass
             
-            pe_ratio = info.get('trailingPE', None)
-            debt_to_equity = info.get('debtToEquity', None)
-            payout_ratio = info.get('payoutRatio', 0.0)
-            market_cap = info.get('marketCap', 0)
-            fifty_two_high = info.get('fiftyTwoWeekHigh', 'N/A')
-            fifty_two_low = info.get('fiftyTwoWeekLow', 'N/A')
+            pe_ratio = info['trailingPE']
+            debt_to_equity = info['debtToEquity']
+            payout_ratio = info['payoutRatio']
+            market_cap = info['marketCap']
+            fifty_two_high = info['fiftyTwoWeekHigh']
+            fifty_two_low = info['fiftyTwoWeekLow']
             
-            # --- INTELLIGENTER "COMPASS INTEGRITY SCORE" MIT THERANOS-NIKOLA-DETEKTOR ---
+            # --- COMPASS INTEGRITY SCORE ---
             base_score = 50
-            
-            # 1. Bilanz & Bewertung (Sander/Munger)
             if isinstance(pe_ratio, (int, float)) and pe_ratio > 0:
-                if pe_ratio < 15:
-                    base_score += 15
-                elif pe_ratio < 30:
-                    base_score += 5
-                else:
-                    base_score -= 5
+                if pe_ratio < 15: base_score += 15
+                elif pe_ratio < 30: base_score += 5
+                else: base_score -= 5
             
-            # 2. Schulden-Check mit Kontext
             if isinstance(debt_to_equity, (int, float)):
-                if debt_to_equity < 50:
-                    base_score += 15
-                elif debt_to_equity < 150:
-                    base_score += 0
-                else:
+                if debt_to_equity < 50: base_score += 15
+                elif debt_to_equity > 150:
                     if isinstance(market_cap, (int, float)) and market_cap > 5_000_000_000:
                         base_score -= 5
                     else:
                         base_score -= 25
             
-            # 3. Marktkapitalisierung & Validierungs-Bonus
             if isinstance(market_cap, (int, float)):
-                if market_cap > 10_000_000_000:
-                    base_score += 20
-                elif market_cap > 2_000_000_000:
-                    base_score += 10
+                if market_cap > 10_000_000_000: base_score += 20
+                elif market_cap > 2_000_000_000: base_score += 10
             
-            # 4. Dividenden-Bonus
             if isinstance(payout_ratio, (int, float)) and 0.1 <= payout_ratio <= 0.7:
                 base_score += 10
                 
             integrity_score = max(15, min(100, base_score))
             
-            # --- OBERFLÄCHE: LOGBUCH & METRIKEN ---
+            # --- UI METRIKEN ---
             st.markdown(f"## 📊 Schiffslogbuch für **{name}** (`{ticker_input}`)")
             
             col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
@@ -193,8 +191,7 @@ if analyze_btn and ticker_input:
             col_m4.metric("Ausschüttung", f"{payout_ratio * 100:.1f}%" if isinstance(payout_ratio, (int, float)) and payout_ratio else "N/A")
             col_m5.metric("🧭 Integrity Score", f"{integrity_score} / 100")
             
-            # Visuelle Integrity-Leiste
-            st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte (Inkl. Theranos-Nikola-Detektor & Validierungs-Prüfung)")
+            st.progress(integrity_score / 100, text=f"Compass Integrity Score: {integrity_score} Punkte")
 
             with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
                 col_t1, col_t2 = st.columns(2)
@@ -205,61 +202,49 @@ if analyze_btn and ticker_input:
 
             st.markdown("---")
             
-            # --- ERWEITERTER KI-PROMPT ---
+            # --- PROMPT ---
             prompt = f"""
-            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander (Substanz), Ray Kurzweil (Technologie), Charlie Munger (Burggraben & Skepsis), Howard Marks (Zyklen) und Max Tegmark (systemische Resilienz & Validierung) vereint.
+            Du bist der 'Oma-Kurz-Kompass ULTRA' - ein neutrales, hochpräzises Analyse-Instrument, das die Weisheit von Beate Sander, Ray Kurzweil, Charlie Munger, Howard Marks und Max Tegmark vereint.
             
             WICHTIGER SCHWERPUNKT (Theranos-Nikola-Detektor): 
-            Prüfe kritisch, ob es sich um echte, unabhängig verifizierte wissenschaftliche / kommerzielle Meilensteine (z.B. zugelassene Produkte, klinische Phase-3-Erfolge, echte Pharma-Partner und Umsätze) handelt oder ob das Unternehmen zu stark von reinen Marketing-Versprechungen ohne Substanz lebt.
+            Prüfe kritisch auf echte Validierung vs. Marketing-Hype.
             
-            Analysiere {name} ({ticker_input}) tiefgehend:
-            - Währung / Börsenplatz: {currency} (ca. {price_eur:.2f} EUR)
+            Analysiere {name} ({ticker_input}):
+            - Währung: {currency} (ca. {price_eur:.2f} EUR)
             - KGV: {pe_ratio}
             - Verschuldung (Debt/Equity): {debt_to_equity}%
             - Marktkapitalisierung: {market_cap}
-            - Berechneter Compass Integrity Score: {integrity_score}/100
+            - Score: {integrity_score}/100
             
-            WICHTIG: KEINE direkten Anlageempfehlungen oder Handlungsbefehle ("Kaufen/Verkaufen"). Keine Anlageberatung!
+            KEINE Anlageberatung!
             
-            Beantworte das Unternehmen in genau dieser Struktur (verwende exakt diese Überschriften mit Doppelkreuz):
-            
+            Struktur:
             ## 1. Sparten & Geschäftsfelder (Womit wird Geld verdient?)
-            [Beschreibe präzise die aktuellen Geschäftssäulen und Segmente.]
-            
             ## 2. Der Transformations- & Zukunfts-Faktor (Kurzweil & Tegmark Brücke)
-            [Wie wandelt sich das Unternehmen technologisch? Wie hoch ist die systemische Zukunftsfähigkeit und Skalierbarkeit?]
-            
             ## 3. Burggraben & Theranos-Detektor (Munger-Skeptiker-Blick)
-            [Gibt es unabhängige wissenschaftliche/regulatorische Validierungen oder handelt es sich um ungeprüfte Versprechungen? Wie stark ist der echte Burggraben?]
-            
             ## 4. Bilanzen, Schulden & Zyklen (Sander & Marks Blick)
-            [Analysiere Bilanzstabilität, Verschuldung und wo sich das Unternehmen im makroökonomischen Zyklus befindet.]
-            
             ## 5. 36-Monats-Horizont & Gesamtprognose
-            [Wie schlägt sich das Unternehmen über die nächsten 3 Jahre im Spannungsfeld aus Substanz, Validierung und exponentiellem Wandel?]
             
-            ### STEIN-KLASSE: [Wähle exakt eines dieser Keywords: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
-            ### FAZIT: [Ein sachliches, ausgewogenes Fazit für ein diversifiziertes Depot]
+            ### STEIN-KLASSE: [Wähle exakt eines: Dividenden-Falle | Unpolierter Rohstein | Sich entwickelnder Stein | Solider Wert | Geschliffener Brillant]
+            ### FAZIT: [Sachliches Fazit]
             """
             
-            # --- AUFRUF DER CACHED FUNKTION ---
-            raw_text = cached_generation(prompt)
+            # 2. KI Abfrage (Cached)
+            raw_text = generate_ki_analysis_cached(prompt)
             
-            # --- STEIN-KLASSEN BADGES ---
             if "Geschliffener Brillant" in raw_text:
-                st.success("💎 **Stein-Klasse: Geschliffener Brillant** – Unknackbarer Burggraben & Exponentielles Wachstum")
+                st.success("💎 **Stein-Klasse: Geschliffener Brillant**")
             elif "Solider Wert" in raw_text:
-                st.info("🛡️ **Stein-Klasse: Solider Wert** – Fels in der Brandung mit gesunder Substanz")
+                st.info("🛡️ **Stein-Klasse: Solider Wert**")
             elif "Sich entwickelnder Stein" in raw_text:
-                st.info("🌱 **Stein-Klasse: Sich entwickelnder Stein** – Wachsendes Potenzial auf dem Weg nach oben")
+                st.info("🌱 **Stein-Klasse: Sich entwickelnder Stein**")
             elif "Unpolierter Rohstein" in raw_text:
-                st.warning("🪨 **Stein-Klasse: Unpolierter Rohstein** – Viel Potenzial, aber noch mit Risiken behaftet")
+                st.warning("🪨 **Stein-Klasse: Unpolierter Rohstein**")
             elif "Dividenden-Falle" in raw_text:
-                st.error("⚠️ **Stein-Klasse: Dividenden-Falle** – Hohe Ausschüttung, aber gefährliche Bilanzen")
+                st.error("⚠️ **Stein-Klasse: Dividenden-Falle**")
                 
             st.markdown("---")
             
-            # --- TEXT PARSEN UND IN VISUELLE CONTAINER PACKEN ---
             parts = raw_text.split("## ")
             for part in parts:
                 if part.startswith("1. Sparten"):
@@ -283,27 +268,13 @@ if analyze_btn and ticker_input:
                         st.markdown("### ⏳ 5. 36-Monats-Horizont & Gesamtprognose")
                         st.markdown(part.replace("5. 36-Monats-Horizont & Gesamtprognose", "").strip())
             
-            # Fazit separat ausgeben
             if "FAZIT:" in raw_text:
                 fazit_text = raw_text.split("FAZIT:")[-1].strip()
                 st.markdown("---")
                 st.info(f"💡 **FAZIT:** {fazit_text}")
                 
-            # --- DOWNLOAD-BUTTON ---
-            st.markdown("---")
-            report_filename = f"Compass_Score_{ticker_input}_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            full_report_content = f"OMA-KURZ-KOMPASS ULTRA v5 LOGBUCH\nAktie: {name} ({ticker_input})\nDatum: {datetime.now().strftime('%Y-%m-%d')}\nCompass Integrity Score: {integrity_score}/100\nKurs: {price} {currency} (≈ {price_eur:.2f} EUR)\n\n{raw_text}"
-            
-            st.download_button(
-                label="📥 Analyse-Logbuch mit Compass Integrity Score herunterladen",
-                data=full_report_content,
-                file_name=report_filename,
-                mime="text/plain",
-                use_container_width=True
-            )
-            
         except Exception as e:
             if "429" in str(e):
-                st.warning("⏳ Das API-Limit der kostenlosen Stufe wurde vorübergehend erreicht. Bitte warte einen kurzen Moment und starte die Analyse erneut.")
+                st.warning("⏳ API-Pause: Sowohl YFinance als auch Gemini bitten um eine kurze Pause. Warte 20-30 Sekunden.")
             else:
-                st.error(f"Fehler bei der Navigation/Analyse: {str(e)}")
+                st.error(f"Fehler: {str(e)}")
