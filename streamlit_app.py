@@ -1,166 +1,139 @@
 import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go
+import plotly.express as px
+import os
 
-# Page Configuration
+# Page Config
 st.set_page_config(
-    page_title="Aktien-Analyse & Chart",
-    page_icon="📈",
+    page_title="OMA-KURZ-KOMPASS ULTRA v5.3",
+    page_icon="🪙",
     layout="wide"
 )
 
-# --- CACHED WÄHRUNGSKURS ABFRAGE ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_fx_rate_cached(currency):
-    if currency == 'EUR' or not currency:
-        return 1.0
+# Custom CSS für edles Design
+st.markdown("""
+<style>
+    .main { background-color: #0e1117; }
+    h1 { color: #f39c12; font-family: 'Georgia', serif; text-align: center; }
+    .subtitle { color: #bdc3c7; text-align: center; font-style: italic; font-size: 0.9em; margin-bottom: 25px; }
+    .stMetric { background-color: #161b22; padding: 10px; border-radius: 8px; border: 1px solid #30363d; }
+</style>
+""", unsafe_allow_html=True)
+
+# Header
+st.markdown("<h1>🪙 OMA-KURZ-KOMPASS ULTRA v5.3</h1>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle'>„Substanz, exponentielle Technologie, Burggräben, Zyklen & Theranos-Nikola-Detektor“</p>", unsafe_allow_html=True)
+
+# 1. Datenabfrage mit Caching (Verhindert API-Sperren & glättet Splits)
+@st.cache_data(ttl=3600)
+def load_stock_data(ticker_symbol):
+    ticker = yf.Ticker(ticker_symbol)
+    # auto_adjust=True korrigiert historische Aktien-Splits sauber!
+    df = ticker.history(period="5y", auto_adjust=True)
+    info = ticker.info
+    return df, info, ticker
+
+# Eingabe-Bereich
+col_in1, col_in2 = st.columns([3, 1])
+with col_in1:
+    ticker_input = st.text_input("Aktien-Ticker eingeben (z.B. FTNT, ALNY, ALV.DE, 6501.T):", value="FTNT").strip().upper()
+
+if ticker_input:
     try:
-        fx_ticker = f"{currency}EUR=X"
-        fx_data = yf.Ticker(fx_ticker)
-        hist = fx_data.history(period="1d")
-        if not hist.empty:
-            return float(hist['Close'].iloc[-1])
-        return 1.0
-    except Exception:
-        return 1.0
-
-# --- CACHED YFINANCE ABFRAGE MIT AUTO-ADJUST & ROBUSTEM FAST_INFO FALLBACK ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_stock_data_cached(ticker_symbol):
-    stock = yf.Ticker(ticker_symbol)
-    
-    # auto_adjust=True bereinigt historische Splits & Ausschüttungen sauber
-    df_fast = stock.history(period="1y", auto_adjust=True)
-    latest_price = 0.0
-    if not df_fast.empty:
-        close_col = 'Close' if 'Close' in df_fast.columns else df_fast.columns[0]
-        latest_price = float(df_fast[close_col].iloc[-1])
-
-    info = {}
-    try:
-        info = stock.info or {}
-    except Exception:
-        info = {}
-    
-    # FastInfo ist ein Objekt (kein dict). getattr schützt sicher vor AttributeErrors.
-    fast_info = getattr(stock, 'fast_info', None)
-    
-    fast_currency = getattr(fast_info, 'currency', None) if fast_info else None
-    fast_last_price = getattr(fast_info, 'last_price', None) if fast_info else None
-    fast_market_cap = getattr(fast_info, 'market_cap', 0) if fast_info else 0
-    fast_year_high = getattr(fast_info, 'year_high', 'N/A') if fast_info else 'N/A'
-    fast_year_low = getattr(fast_info, 'year_low', 'N/A') if fast_info else 'N/A'
-    
-    currency = info.get('currency') or fast_currency or 'USD'
-    price = info.get('currentPrice') or info.get('regularMarketPrice') or fast_last_price or latest_price
-    if not price or price == 0.0:
-        price = latest_price
+        df_hist, info, ticker_obj = load_stock_data(ticker_input)
         
-    if currency == 'GBp':
-        price = price / 100.0
-        currency = 'GBP'
-        
-    fx_rate = fetch_fx_rate_cached(currency)
-    price_eur = price * fx_rate if isinstance(price, (int, float)) else price
-
-    return {
-        'longName': info.get('longName', ticker_symbol),
-        'currentPrice': price,
-        'currency': currency,
-        'price_eur': price_eur,
-        'trailingPE': info.get('trailingPE'),
-        'debtToEquity': info.get('debtToEquity'),
-        'payoutRatio': info.get('payoutRatio', 0.0),
-        'marketCap': info.get('marketCap') or fast_market_cap,
-        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', fast_year_high),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', fast_year_low),
-        'df_history': df_fast
-    }
-
-# --- CACHED CHART RENDERER MIT SPLIT-KORREKTUR ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_chart_history_cached(ticker_symbol, period_choice):
-    stock = yf.Ticker(ticker_symbol)
-    return stock.history(period=period_choice, auto_adjust=True)
-
-def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
-    st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
-    
-    period_choice = st.radio(
-        "Zeitraum wählen:",
-        ["6m", "1y", "3y", "5y"],
-        index=1,
-        horizontal=True,
-        key=f"chart_period_{ticker_symbol}"
-    )
-    
-    if period_choice == "1y" and not df_prefetched.empty:
-        df = df_prefetched
-    else:
-        df = fetch_chart_history_cached(ticker_symbol, period_choice)
-    
-    if not df.empty:
-        y_col = 'Close' if 'Close' in df.columns else df.columns[0]
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df[y_col],
-            mode='lines',
-            name='Schlusskurs',
-            line=dict(color='#d4af37', width=2),
-            hovertemplate='%{x|%d.%m.%Y}: <b>%{y:.2f}</b>'
-        ))
-        
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(20,20,20,0.6)",
-            margin=dict(l=10, r=10, t=20, b=10),
-            height=350,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor="#333333", title="Kurs"),
-            hovermode="x unified"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Keine historischen Kursdaten verfügbar.")
-
-# --- MAIN STREAMLIT APPLICATION ---
-def main():
-    st.title("📊 Aktien-Analyse Dashboard")
-    
-    # Sidebar Eingabe
-    st.sidebar.header("Einstellungen")
-    ticker_input = st.sidebar.text_input("Ticker-Symbol eingeben (z.B. FTNT, AAPL, MSFT):", value="FTNT").upper().strip()
-    
-    if ticker_input:
-        with st.spinner(f"Lade Daten für {ticker_input}..."):
-            data = fetch_stock_data_cached(ticker_input)
-            
-        if data and data.get('currentPrice'):
-            st.header(f"{data['longName']} ({ticker_input})")
-            
-            # Kennzahlen im Überblick
-            col1, col2, col3, col4 = st.columns(4)
-            
-            col1.metric("Aktueller Kurs", f"{data['currentPrice']:.2f} {data['currency']}")
-            col2.metric("Kurs in EUR", f"{data['price_eur']:.2f} €" if isinstance(data['price_eur'], (int, float)) else "N/A")
-            
-            pe_val = f"{data['trailingPE']:.2f}" if data.get('trailingPE') else "N/A"
-            col3.metric("KGV (P/E)", pe_val)
-            
-            mcap = data.get('marketCap', 0)
-            mcap_str = f"{mcap / 1e9:.2f} Mrd." if mcap else "N/A"
-            col4.metric("Marktkapitalisierung", mcap_str)
-            
-            st.divider()
-            
-            # Chart anzeigen
-            render_interactive_chart(ticker_input, data['longName'], data['df_history'])
-            
+        if df_hist.empty:
+            st.error(f"Keine Daten für Ticker '{ticker_input}' gefunden.")
         else:
-            st.error(f"Für das Ticker-Symbol '{ticker_input}' konnten keine Daten geladen werden. Bitte überprüfe die Eingabe.")
+            # Kennzahlen ziehen
+            current_price = info.get('currentPrice') or info.get('regularMarketPrice') or (df_hist['Close'].iloc[-1] if not df_hist.empty else 0)
+            currency = info.get('currency', 'USD')
+            pe_ratio = info.get('trailingPE', 'N/A')
+            debt_to_equity = info.get('debtToEquity', 'N/A')
+            payout_ratio = info.get('payoutRatio', 'N/A')
+            long_name = info.get('longName', ticker_input)
+            market_cap = info.get('marketCap', 'N/A')
 
-if __name__ == "__main__":
-    main()
+            # Währung umrechnen (EUR Kurs-Schätzung falls USD)
+            eur_price = current_price * 0.87 if currency == "USD" else current_price
+
+            # Integrity Score Berechnung
+            integrity_score = 80  # Basiswert
+            if pe_ratio != 'N/A' and pe_ratio < 25: integrity_score += 10
+            if debt_to_equity != 'N/A' and debt_to_equity < 100: integrity_score += 10
+
+            # UI Header & Schiffslogbuch
+            st.markdown(f"## 📊 Schiffslogbuch für {long_name} ( <span style='color:#2ecc71;'>{ticker_input}</span> )", unsafe_allow_html=True)
+            
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Kurs", f"{current_price:.2f} {currency}", delta=f"≈ {eur_price:.2f} EUR")
+            m2.metric("KGV", f"{pe_ratio if pe_ratio == 'N/A' else round(pe_ratio, 2)}")
+            m3.metric("Schulden (D/E)", f"{debt_to_equity if debt_to_equity == 'N/A' else str(round(debt_to_equity, 2)) + '%'}")
+            m4.metric("Ausschüttung", f"{payout_ratio if payout_ratio == 'N/A' else str(round(payout_ratio * 100, 2)) + '%'}")
+            m5.metric("🛡️ Integrity Score", f"{integrity_score} / 100")
+
+            st.progress(integrity_score / 100)
+
+            # Interactive Plotly Chart
+            st.markdown("### 📈 Kursverlauf & Marktzyklus")
+            timeframe = st.radio("Zeitraum wählen:", ["6m", "1y", "3y", "5y"], index=1, horizontal=True)
+
+            tf_map = {"6m": 126, "1y": 252, "3y": 756, "5y": 1260}
+            sliced_df = df_hist.tail(tf_map.get(timeframe, 252))
+
+            fig = px.line(sliced_df, y='Close', labels={'Close': 'Kurs', 'Date': 'Datum'})
+            fig.update_traces(line_color='#f1c40f', line_width=2)
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#ffffff'),
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='#30363d')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Details & Klappbox
+            with st.expander("📌 Erweiterte Fundamentaldaten & Kursspanne anzeigen"):
+                st.write(f"**Marktkapitalisierung:** {market_cap:,} {currency}" if isinstance(market_cap, (int, float)) else f"**Marktkapitalisierung:** {market_cap}")
+                st.write(f"**52-Wochen-Spanne:** {info.get('fiftyTwoWeekLow', 'N/A')} - {info.get('fiftyTwoWeekHigh', 'N/A')} {currency}")
+
+            st.divider()
+
+            # --- DAS HERZSTÜCK: DER OMA-KURZ-ULTRA PROMPT ---
+            st.markdown("### 🧠 Tiefenanalyse: Das ULTRA-Quartett & Theranos-Nikola-Detektor")
+            
+            prompt_text = f"""
+Du bist der Chefanalyst des OMA-KURZ-KOMPASS ULTRA v5.3. 
+Analysiere die folgende Aktie: {long_name} ({ticker_input}).
+
+Aktuelle Daten:
+- Kurs: {current_price} {currency}
+- KGV: {pe_ratio}
+- Schulden (D/E): {debt_to_equity}
+
+Wende streng die 4 ULTRA-Prüfsteine an:
+
+1. **Sparten & Geschäftsfelder (Oma-Kurz-Blick):**
+   Womit verdient die Firma ihr Geld tatsächlich? Welche Zukunftsfelder werden abgedeckt?
+
+2. **Exponentielle Technologie & KI-Trends:**
+   Profi tieren sie von Mega-Trends (KI, Daten, Infrastruktur)? Ist es echte Technologie oder Hype?
+
+3. **🚨 THERANOS-NIKOLA-DETEKTOR (Prüfstein der harten Realität):**
+   - Basiert das Geschäft auf echten, auszuliefernden Produkten/Services und auditierten Umsätzen?
+   - Oder gibt es Anzeichen für leere Hype-Versprechen, ungeklärte Prototypen oder "rollende LKW-Hügel"-Rhetorik?
+   - Prüfe auf Klumpenrisiken (starke Abhängigkeit von wackeligen Großkunden/Partnern).
+
+4. **Sander & Marks Synthese (Burggraben, Bewertung & Marktzyklus):**
+   - Hat die Firma einen uneinnehmbaren Burggraben (Moat)?
+   - Wo befinden wir uns im Marktzyklus? Ist die Aktie fair bewertet oder überhitzt?
+
+Gib dein Urteil prägnant, strukturiert und in klarer Sprache ab.
+"""
+
+            with st.expander("📜 Generierten Prompt für KI-Analyse einsehen"):
+                st.code(prompt_text, language="markdown")
+
+    except Exception as e:
+        st.error(f"Fehler beim Laden der Daten: {e}")
+        st.info("💡 API-Pause: Bitte 20-30 Sekunden warten und Seite neu laden.")
