@@ -108,11 +108,12 @@ def fetch_fx_rate_cached(currency):
     return fallback_rates.get(currency, 1.0)
 
 # --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS & FALLBACK ---
+# --- CACHED YFINANCE ABFRAGE MIT HIGH-AVAILABILITY FALLBACKS ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
     
-    # 1. Kurs aus History holen
+    # 1. Kurs & Verlauf abrufen
     df_fast = stock.history(period="1y")
     latest_price = 0.0
     if not df_fast.empty:
@@ -124,11 +125,14 @@ def fetch_stock_data_cached(ticker_symbol):
     except Exception:
         info = {}
     
-    currency = info.get('currency', 'JPY' if ticker_symbol.endswith('.T') else 'USD')
-    price = info.get('currentPrice', info.get('regularMarketPrice', latest_price))
-    if price == 0.0 or price is None:
-        price = latest_price
+    # Fast-Info Fallback (wird von Yahoo seltener geblockt)
+    fast_info = getattr(stock, 'fast_info', {})
     
+    currency = info.get('currency') or getattr(fast_info, 'currency', 'USD')
+    price = info.get('currentPrice') or info.get('regularMarketPrice') or getattr(fast_info, 'last_price', latest_price)
+    if not price or price == 0.0:
+        price = latest_price
+        
     if currency == 'GBp':
         price = price / 100.0
         currency = 'GBP'
@@ -136,61 +140,25 @@ def fetch_stock_data_cached(ticker_symbol):
     fx_rate = fetch_fx_rate_cached(currency)
     price_eur = price * fx_rate if isinstance(price, (int, float)) else price
 
+    # Kennzahlen-Fallbacks
+    pe_ratio = info.get('trailingPE')
+    debt_to_equity = info.get('debtToEquity')
+    payout_ratio = info.get('payoutRatio', 0.0)
+    market_cap = info.get('marketCap') or getattr(fast_info, 'market_cap', 0)
+    
     return {
         'longName': info.get('longName', ticker_symbol),
         'currentPrice': price,
         'currency': currency,
         'price_eur': price_eur,
-        'trailingPE': info.get('trailingPE', None),
-        'debtToEquity': info.get('debtToEquity', None),
-        'payoutRatio': info.get('payoutRatio', 0.0),
-        'marketCap': info.get('marketCap', 0),
-        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+        'trailingPE': pe_ratio,
+        'debtToEquity': debt_to_equity,
+        'payoutRatio': payout_ratio,
+        'marketCap': market_cap,
+        'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', getattr(fast_info, 'year_high', 'N/A')),
+        'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', getattr(fast_info, 'year_low', 'N/A')),
         'df_history': df_fast
     }
-
-def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
-    st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
-    
-    period_choice = st.radio(
-        "Zeitraum wählen:",
-        ["6m", "1y", "3y", "5y"],
-        index=1,
-        horizontal=True,
-        key=f"chart_period_{ticker_symbol}"
-    )
-    
-    if period_choice == "1y" and not df_prefetched.empty:
-        df = df_prefetched
-    else:
-        stock = yf.Ticker(ticker_symbol)
-        df = stock.history(period=period_choice)
-    
-    if not df.empty:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Close'],
-            mode='lines',
-            name='Schlusskurs',
-            line=dict(color='#d4af37', width=2),
-            hovertemplate='%{x|%d.%m.%Y}: <b>%{y:.2f}</b>'
-        ))
-        
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(20,20,20,0.6)",
-            margin=dict(l=10, r=10, t=20, b=10),
-            height=350,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor="#333333", title="Kurs"),
-            hovermode="x unified"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Keine historischen Kursdaten verfügbar.")
 
 # --- CACHED KI-GENERIERUNG MIT EXPONENTIAL BACKOFF ---
 @st.cache_data(ttl=3600, show_spinner=False)
