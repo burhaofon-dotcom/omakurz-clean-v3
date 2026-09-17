@@ -107,7 +107,6 @@ def fetch_fx_rate_cached(currency):
     fallback_rates = {'JPY': 0.0062, 'USD': 0.92, 'GBP': 1.18}
     return fallback_rates.get(currency, 1.0)
 
-# --- CACHED YFINANCE ABFRAGE INKLUSIVE WECHSELKURS & FALLBACK ---
 # --- CACHED YFINANCE ABFRAGE MIT HIGH-AVAILABILITY FALLBACKS ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data_cached(ticker_symbol):
@@ -189,6 +188,48 @@ if "active_ticker" in st.session_state:
     with st.spinner(f"Führe Theranos-Nikola-Detektor aus & durchleuchte {current_ticker}..."):
         try:
             info = fetch_stock_data_cached(current_ticker)
+            # --- INTERAKTIVER CHART RENDERER ---
+def render_interactive_chart(ticker_symbol, company_name, df_prefetched):
+    st.markdown(f"### 📈 Kursverlauf & Marktzyklus für **{company_name}**")
+    
+    period_choice = st.radio(
+        "Zeitraum wählen:",
+        ["6m", "1y", "3y", "5y"],
+        index=1,
+        horizontal=True,
+        key=f"chart_period_{ticker_symbol}"
+    )
+    
+    if period_choice == "1y" and not df_prefetched.empty:
+        df = df_prefetched
+    else:
+        stock = yf.Ticker(ticker_symbol)
+        df = stock.history(period=period_choice)
+    
+    if not df.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            mode='lines',
+            name='Schlusskurs',
+            line=dict(color='#d4af37', width=2),
+            hovertemplate='%{x|%d.%m.%Y}: <b>%{y:.2f}</b>'
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(20,20,20,0.6)",
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=350,
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor="#333333", title="Kurs"),
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Keine historischen Kursdaten verfügbar.")
             
             name = info['longName']
             price = info['currentPrice']
