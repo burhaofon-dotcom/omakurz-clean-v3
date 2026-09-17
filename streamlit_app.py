@@ -49,7 +49,7 @@ except Exception as e:
 
 # --- MODELL INITIALISIERUNG (FIX: GÜLTIGES MODELL NATIVE ANGEPASST) ---
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-1.5-flash-latest",
     generation_config={
         "temperature": 0.2,
         "max_output_tokens": 2000,
