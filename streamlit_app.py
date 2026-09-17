@@ -47,6 +47,22 @@ except Exception as e:
     st.error("🚨 Sicherheitsfehler: Kein Gemini API-Key in den Streamlit-Secrets gefunden!")
     st.stop()
 
+# --- MODELL-KANDIDATEN (MUSS HIER VOR DER FUNKTION STEHEN!) ---
+MODEL_CANDIDATES = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro"
+]
+
+# Globales Modell-Objekt (damit 'model' überall im Code definiert ist)
+model = genai.GenerativeModel(
+    model_name=MODEL_CANDIDATES[0],
+    generation_config={
+        "temperature": 0.3,
+        "max_output_tokens": 3200,
+    }
+)
+
 # --- CACHED KI-GENERIERUNG MIT RETRY & MODELL-FALLBACK ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def generate_ki_analysis_cached(prompt_text):
@@ -56,21 +72,16 @@ def generate_ki_analysis_cached(prompt_text):
             temp_model = genai.GenerativeModel(
                 model_name=model_name,
                 generation_config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 2000,
+                    "temperature": 0.3,
+                    "max_output_tokens": 3200,
                 }
             )
             response = temp_model.generate_content(prompt_text)
             return response.text
         except Exception as err:
             last_exception = err
-            # Wenn 404 (Modell existiert nicht), direkt das nächste Modell versuchen
-            if "404" in str(err) or "not found" in str(err).lower():
-                continue
-            # Bei Rate-Limits (429) kurz warten
             if "429" in str(err):
                 time.sleep(5)
-                continue
             continue
             
     raise last_exception
